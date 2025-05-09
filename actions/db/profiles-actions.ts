@@ -10,8 +10,9 @@ import {
   profilesTable,
   SelectProfile
 } from "@/db/schema/profiles-schema"
+import { MAX_DAILY_EDITS } from "@/lib/constants"
 import { ActionState } from "@/types"
-import { eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 export async function createProfileAction(
   data: InsertProfile
@@ -122,5 +123,117 @@ export async function deleteProfileAction(
   } catch (error) {
     console.error("Error deleting profile:", error)
     return { isSuccess: false, message: "Failed to delete profile" }
+  }
+}
+
+/**
+ * Creates or updates a profile when a user logs in
+ * @param data The user data from Clerk
+ * @returns The created or updated profile
+ */
+export async function createOrUpdateProfileOnLoginAction(
+  data: { userId: string; email?: string | null }
+): Promise<ActionState<SelectProfile>> {
+  try {
+    // Check if profile exists
+    const profileResult = await getProfileByUserIdAction(data.userId)
+    
+    if (profileResult.isSuccess) {
+      // Update email if it changed
+      if (data.email && profileResult.data.email !== data.email) {
+        return updateProfileAction(data.userId, { email: data.email })
+      }
+      return profileResult
+    }
+    
+    // Create new profile
+    return createProfileAction({
+      userId: data.userId,
+      email: data.email || null,
+      dailyEditCount: 0,
+      lastEditDate: new Date(),
+    })
+  } catch (error) {
+    console.error("Error in createOrUpdateProfileOnLoginAction:", error)
+    return { isSuccess: false, message: "فشل في إنشاء أو تحديث الملف الشخصي" }
+  }
+}
+
+/**
+ * Checks if a user has reached their daily edit limit and increments the count if not
+ * @param userId The user ID
+ * @returns Whether the limit has been reached and how many edits remain
+ */
+export async function checkAndIncrementUsageAction(
+  userId: string
+): Promise<ActionState<{ limitReached: boolean; remainingEdits: number }>> {
+  try {
+    // Get the profile
+    const profileResult = await getProfileByUserIdAction(userId)
+    
+    if (!profileResult.isSuccess) {
+      return { isSuccess: false, message: "لم يتم العثور على الملف الشخصي" }
+    }
+    
+    const profile = profileResult.data
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const lastEditDate = profile.lastEditDate 
+      ? profile.lastEditDate.toISOString().split('T')[0]
+      : null
+    
+    // If last edit date is not today, reset the count
+    if (!lastEditDate || lastEditDate !== today) {
+      const updatedProfile = await updateProfileAction(userId, {
+        dailyEditCount: 1,
+        lastEditDate: new Date()
+      })
+      
+      if (!updatedProfile.isSuccess) {
+        return { isSuccess: false, message: "فشل في تحديث عداد التعديلات" }
+      }
+      
+      return {
+        isSuccess: true,
+        message: "تم تحديث عداد التعديلات",
+        data: {
+          limitReached: false,
+          remainingEdits: MAX_DAILY_EDITS - 1
+        }
+      }
+    }
+    
+    // Check if the limit has been reached
+    if (profile.dailyEditCount >= MAX_DAILY_EDITS) {
+      return {
+        isSuccess: true,
+        message: "تم الوصول إلى الحد اليومي للتعديلات",
+        data: {
+          limitReached: true,
+          remainingEdits: 0
+        }
+      }
+    }
+    
+    // Increment the count
+    const updatedProfile = await updateProfileAction(userId, {
+      dailyEditCount: profile.dailyEditCount + 1,
+      lastEditDate: new Date()
+    })
+    
+    if (!updatedProfile.isSuccess) {
+      return { isSuccess: false, message: "فشل في تحديث عداد التعديلات" }
+    }
+    
+    return {
+      isSuccess: true,
+      message: "تم تحديث عداد التعديلات",
+      data: {
+        limitReached: false,
+        remainingEdits: MAX_DAILY_EDITS - (profile.dailyEditCount + 1)
+      }
+    }
+  } catch (error) {
+    console.error("Error in checkAndIncrementUsageAction:", error)
+    return { isSuccess: false, message: "حدث خطأ أثناء التحقق من حد التعديلات اليومي" }
   }
 }

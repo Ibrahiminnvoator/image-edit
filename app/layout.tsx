@@ -2,25 +2,19 @@
 The root server layout for the app.
 */
 
-import {
-  createProfileAction,
-  getProfileByUserIdAction
-} from "@/actions/db/profiles-actions"
 import { Toaster } from "@/components/ui/toaster"
 import { Providers } from "@/components/utilities/providers"
 import { TailwindIndicator } from "@/components/utilities/tailwind-indicator"
 import { cn } from "@/lib/utils"
 import { ClerkProvider } from "@clerk/nextjs"
-import { auth } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { tajawal } from "./fonts"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"] })
-
 export const metadata: Metadata = {
-  title: "Receipt AI",
-  description: "A full-stack web app template."
+  title: "أَيْسَر | AisarEdit",
+  description: "تعديل الصور باستخدام الذكاء الاصطناعي"
 }
 
 export default async function RootLayout({
@@ -31,19 +25,24 @@ export default async function RootLayout({
   const { userId } = await auth()
 
   if (userId) {
-    const profileRes = await getProfileByUserIdAction(userId)
-    if (!profileRes.isSuccess) {
-      await createProfileAction({ userId })
-    }
+    // Get user data from Clerk
+    const user = await currentUser()
+    const email = user?.emailAddresses[0]?.emailAddress || null
+
+    // Create or update profile in Supabase
+    const { createOrUpdateProfileOnLoginAction } = await import(
+      "@/actions/db/profiles-actions"
+    )
+    await createOrUpdateProfileOnLoginAction({ userId, email })
   }
 
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
+      <html lang="ar" dir="rtl" suppressHydrationWarning>
         <body
           className={cn(
-            "bg-background mx-auto min-h-screen w-full scroll-smooth antialiased",
-            inter.className
+            "bg-background font-tajawal mx-auto min-h-screen w-full scroll-smooth antialiased",
+            tajawal.variable
           )}
         >
           <Providers
