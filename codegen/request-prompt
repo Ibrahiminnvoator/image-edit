@@ -1,0 +1,200 @@
+# **أَيْسَر** _(**AisarEdit**) -  AI Image Editor
+## Project Description
+An Arabic web application that allows users to upload images and edit them using AI. Users describe the desired changes in Arabic or English text, and the app uses multiple AI models to analyze the image, understand the user's request, and generate the edited image. The platform is designed for content creators who need quick image edits without technical expertise.
+
+## Target Audience
+- Arabic-speaking non-technical users
+- Content creators who need quick image edits
+
+## Desired Features
+### Authentication
+- [ ] User signup/login functionality using Clerk Auth
+- [ ] User dashboard after authentication
+- [ ] Usage tracking for daily edit limits
+
+### User Interface
+- [ ] Arabic language interface throughout the application
+- [ ] Mobile-responsive design
+- [ ] Landing page
+- [ ] Dashboard with sidebar
+- [ ] Edit page for image processing
+- [ ] History page to view past edits
+- [ ] Clear notification when daily edit limit is reached
+
+### Image Processing
+- [ ] Image upload functionality
+  - [ ] Support for common image formats (JPG, PNG, WebP)
+  - [ ] File size limitations and validation
+- [ ] Text input for describing desired edits (supporting both Arabic and English)
+- [ ] Generate button to process the request
+- [ ] First Gemini model: Analyze uploaded image and create short description
+- [ ] Second Gemini model: Language detection and Arabic-to-English translation if needed
+- [ ] Third Gemini model: Process image editing based on description and user prompt
+- [ ] Display edited image result
+- [ ] Option to download edited image
+- [ ] Save edits to history
+- [ ] Preset edit options for common edits (to be implemented in future phase)
+
+### History & Storage
+- [ ] Store edit history in Supabase
+- [ ] Display previous edits with original image, prompt, and result
+- [ ] Download option for past edits
+
+## Technical Requirements
+- [ ] NextJS for frontend development
+- [ ] Supabase for database and storage
+- [ ] Clerk for authentication
+- [ ] Integration with Gemini API for AI processing
+- [ ] Error handling and logging system
+  - [ ] User-friendly error messages in the UI
+  - [ ] Backend logging for troubleshooting
+- [ ] Deployment on Vercel
+
+## Technical Architecture
+### Frontend Layer
+- [ ] Next.js application with React components
+- [ ] Arabic UI libraries and RTL support
+- [ ] Responsive design system
+
+### Authentication Layer
+- [ ] Clerk integration for user management
+- [ ] Role-based permissions
+
+### Orchestration Architecture
+- [ ] Asynchronous Workflow Engine
+  - [ ] Define each model interaction as a discrete task
+  - [ ] Implement retry policies and comprehensive logging
+  - [ ] Move orchestration logic from React client to scalable backend
+
+- [ ] Decouple via Pub/Sub or Queues
+  - [ ] Push uploaded images to message queue
+  - [ ] Create worker functions for each model stage
+  - [ ] Ensure non-blocking operations and auto-scaling capability
+
+- [ ] Standard Contracts Between Stages
+  - [ ] Define JSON payload structure for inter-stage communication:
+    ```
+    {
+      "imageUrl": "...",
+      "description": "A cat sitting on a chair",
+      "language": "ar",
+      "translatedText": "A cat sitting on a chair"
+    }
+    ```
+  - [ ] Implement validation for each stage payload
+
+### Data Layer
+- [ ] Supabase for user data and image storage
+- [ ] Caching system for improved performance
+
+### Integration Layer
+- [ ] Payment gateway integration (prepared for future use)
+- [ ] Analytics hooks (prepared for future use)
+
+## Security & Data Handling
+- [ ] Implement secure authentication flow
+- [ ] Use HTTPS for all communications
+- [ ] User data encryption in transit and at rest
+- [ ] Image processing permissions and validation
+- [ ] Rate limiting to prevent abuse
+- [ ] Implement proper data deletion policies
+- [ ] Privacy policy and terms of service documents
+
+## Design Requests
+- [ ] Arabic-first UI/UX design
+- [ ] Clear navigation between dashboard, edit, and history pages
+- [ ] Mobile-responsive interfaces for all pages
+- [ ] User-friendly error messages
+
+### Typography Specifications
+- [ ] **Font Family**: Tajawal as the default font
+  - [ ] Set globally via the font-tajawal class on the `<body>` element in the layout
+
+- [ ] **Font Weights by Element**:
+  - [ ] Main Headings (h1):
+    ```jsx
+    <h1 className="mb-6 text-center text-3xl font-bold tracking-tight md:text-4xl">
+      إنشاء صورتك المعدلة
+    </h1>
+    ```
+    - Font: Tajawal
+    - Weight: font-bold (700, Bold)
+    
+  - [ ] Section Headings (h2):
+    ```jsx
+    <h2 className="text-xl font-semibold">١. تحميل الصورة</h2>
+    ```
+    - Font: Tajawal
+    - Weight: font-semibold (600, SemiBold)
+    
+  - [ ] Paragraph Text:
+    ```jsx
+    <p className="text-muted-foreground mb-8 text-center">
+      قم بتحميل صورتك، واختر النمط المناسب، ودع الذكاء الاصطناعي يقوم بالسحر!
+    </p>
+    ```
+    - Font: Tajawal
+    - Weight: Default (400, Regular)
+    
+  - [ ] Error Messages:
+    ```jsx
+    <p>
+      خطأ في تحميل الأنماط: ...
+    </p>
+    ```
+    - Font: Tajawal
+    - Weight: Default (400, Regular)
+
+- [ ] Typography Reference Table:
+  | Element | Font | Tailwind Class | Weight (Tajawal) |
+  |-----------------|----------|------------------|------------------|
+  | Main Heading | Tajawal | font-bold | 700 (Bold) |
+  | Section Heading | Tajawal | font-semibold | 600 (SemiBold) |
+  | Paragraph/Text | Tajawal | (default) | 400 (Regular) |
+  | Error Message | Tajawal | (default) | 400 (Regular) |
+
+### Visual Design Elements
+- [ ] **Background Styles**:
+  - [ ] Modern gradient backgrounds to create depth and visual interest
+  - [ ] Main background using `bg-background` from Tailwind theme
+  - [ ] Section backgrounds using `bg-muted/40`, `bg-destructive/10` for subtle contrast
+  - [ ] Custom gradient overlays for landing page and key sections
+
+- [ ] **UI Components**:
+  - [ ] Buttons: Shadcn Button components with primary/outline variants
+  - [ ] Borders: `border`, `border-dashed`, `border-destructive` for different contexts
+  - [ ] Text styling: Using `text-muted-foreground`, `text-destructive` for semantic meaning
+  - [ ] Shadows: `shadow-sm`, `shadow-md`, `shadow-inner` for depth and hierarchy
+  - [ ] Rounded corners: `rounded-md`, `rounded-lg` for consistent component styling
+
+- [ ] **Visual Style Reference Table**:
+  | Element | Class/Component | Color/Style Source |
+  |------------------------|----------------------------------------------|---------------------------|
+  | Main background | bg-background | Tailwind theme |
+  | Section backgrounds | bg-muted/40, bg-destructive/10 | Tailwind theme |
+  | Buttons | Shadcn Button, primary/outline | Tailwind theme |
+  | Borders | border, border-dashed, border-destructive | Tailwind theme |
+  | Headings/Text | font-bold, font-semibold, text-muted-foreground, text-destructive | Tailwind theme |
+  | Shadows | shadow-sm, shadow-md, shadow-inner | Tailwind utility |
+  | Rounded corners | rounded-md, rounded-lg | Tailwind utility |
+
+## Business Model
+- [ ] Free service initially
+- [ ] Limit of 5 image edits per user per day
+- [ ] Usage tracking system
+- [ ] Prepare for future monetization:
+  - [ ] Payment gateway integration infrastructure
+  - [ ] Subscription model framework
+  - [ ] Premium feature flagging system
+
+## Development Approach
+- [ ] Phased implementation with core features first
+  - Phase 1: Basic upload, edit, and history functionality
+  - Phase 2: Additional features like preset edits and enhanced user experience
+  - Phase 3: Monetization features and premium options
+
+## Other Notes
+- The application will process images as base64 URLs when sending to AI models
+- All user interface text will be in Arabic
+- Gemini API access is already available for integration
+- Application name أَيْسَر _(AisarEdit) means "_simplest" – aligns with user-friendly design._, reflecting the app's purpose

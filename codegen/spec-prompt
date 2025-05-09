@@ -1,0 +1,1068 @@
+<specification_planning>
+## Specification Planning for AisarEdit
+
+Here's a breakdown of the planning process for generating the AisarEdit technical specification:
+
+**1. Core system architecture and key workflows**
+    *   **Step-by-step breakdown:**
+        *   **System Architecture:**
+            *   Frontend: Next.js 14 (App Router), React, Tailwind CSS, Shadcn UI, Framer Motion (for minor animations).
+            *   Backend: Next.js Server Actions and API Routes, Supabase (PostgreSQL for DB, Storage for images).
+            *   Authentication: Clerk.
+            *   AI Processing: Google Gemini API (multiple models).
+            *   Deployment: Vercel.
+        *   **Key User Workflows:**
+            1.  **User Authentication:** Signup/Login via Clerk -> Redirect to Dashboard.
+            2.  **Image Editing Request:**
+                *   User navigates to Edit Page.
+                *   User uploads an image (JPG, PNG, WebP, validated size). Image stored in Supabase Storage (original bucket).
+                *   User enters a text prompt (Arabic/English) describing desired changes.
+                *   User clicks "Generate".
+            3.  **Backend Image Processing Orchestration (Asynchronous):**
+                *   Client calls a `startImageEditProcessAction` server action.
+                *   This action creates an `edits` record (status: `pending`) and an `image_processing_jobs` record (initial stage: `pending`, with `imageUrl`, `userPrompt`). Returns `jobId`.
+                *   Client polls `getJobStatusAction(jobId)` or a similar endpoint.
+                *   A backend worker/scheduler (e.g., a cron-triggered Next.js API route or Supabase Scheduled Function) picks up jobs from `image_processing_jobs`.
+                *   **Stage 1 (Describe Image):** Worker calls Gemini Model 1 to analyze the uploaded image and create a short description. Updates `image_processing_jobs.stage_payload.description` and `image_processing_jobs.current_stage`.
+                *   **Stage 2 (Translate Prompt):** Worker calls Gemini Model 2 to detect language of user prompt and translate to English if Arabic. Updates `image_processing_jobs.stage_payload.language`, `image_processing_jobs.stage_payload.translatedText` and `image_processing_jobs.current_stage`.
+                *   **Stage 3 (Edit Image):** Worker calls Gemini Model 3, providing the original image (as base64), the AI-generated description, and the (translated) user prompt. Gemini returns the edited image (as base64).
+                *   Worker uploads the edited image to Supabase Storage (edited bucket).
+                *   Worker updates `image_processing_jobs` (status: `completed`, `stage_payload.editedImageUrl`) and the main `edits` record (status: `completed`, `edited_image_url`).
+            4.  **Display Result:** Polling client sees job `completed`, fetches the edited image URL, and displays it. Option to download.
+            5.  **View History:** User navigates to History Page, sees a list of their past edits (original, prompt, result). Option to download past edits.
+            6.  **Usage Tracking & Limit:** Before starting an edit, check `daily_edit_count` in `profiles` table. If limit (5) reached, show notification. Increment count on successful edit. Reset daily.
+        *   **Orchestration Architecture (as detailed in workflow):**
+            *   `image_processing_jobs` table in Supabase acts as a queue and state machine.
+            *   Next.js API Routes or Server Actions act as "worker functions" for each stage.
+            *   Standard JSON contract for `stage_payload` as specified.
+    *   **Potential challenges/clarifications:**
+        *   Robustness of the polling mechanism vs. WebSockets (WebSockets are likely out of scope for Phase 1). Polling interval and server load.
+        *   Implementing the "worker" scheduler: A Vercel Cron Job calling a Next.js API route is a feasible approach.
+        *   Ensuring base64 image handling is efficient and doesn't hit payload limits if passing between too many serverless functions. Direct fetching from storage URL in backend workers is preferable.
+    *   **Edge cases/Error handling:**
+        *   AI model API errors (rate limits, content moderation, timeouts) at each stage.
+        *   Image conversion/handling errors.
+        *   Job gets stuck in a stage. Retry logic (e.g., `retry_count` in `image_processing_jobs`).
+        *   Failures to update Supabase.
+
+**2. Project structure and organization**
+    *   **Step-by-step breakdown:**
+        *   Leverage starter template structure.
+        *   New directories:
+            *   `app/(app)/` (for authenticated routes like dashboard, edit, history)
+                *   `app/(app)/dashboard/page.tsx`
+                *   `app/(app)/edit/page.tsx`, `app/(app)/edit/_components/`
+                *   `app/(app)/history/page.tsx`, `app/(app)/history/_components/`
+                *   `app/(app)/layout.tsx` (with sidebar)
+            *   `app/api/orchestrator/worker/route.ts` (for the cron-triggered worker)
+            *   `app/api/jobs/[jobId]/status/route.ts` (for client polling)
+            *   `actions/ai/gemini-actions.ts` (for Gemini API calls)
+            *   `actions/storage/image-storage-actions.ts`
+            *   `db/schema/edits-schema.ts`, `db/schema/image-processing-jobs-schema.ts`
+            *   `lib/constants.ts` (for image limits, formats, daily edit limits)
+            *   `types/image-processing-types.ts`, `types/gemini-types.ts`
+            *   `prompts/` (if prompts become complex, store them as text files here)
+        *   Adherence to kebab-case for files/folders.
+    *   **Potential challenges/clarifications:**
+        *   Ensuring clear separation of concerns between Server Actions and API Routes for orchestration if both are used.
+    *   **Edge cases/Error handling:** N/A.
+
+**3. Detailed feature specifications**
+    *   Will be detailed per feature in the main specification. Key aspects:
+        *   **Authentication:** Clerk integration, profile sync to Supabase, usage tracking fields in `profiles`.
+        *   **UI:** Arabic first, RTL, responsive. Landing, Dashboard, Edit, History pages. Specific components for image upload, prompt input, result display. Notifications.
+        *   **Image Processing:** Upload (validation, storage), text input (Ar/En), "Generate" button triggers backend orchestration. Display result, download. Save to history.
+        *   **History & Storage:** Supabase for `edits` table. Display grid/list. Download.
+        *   **Usage Tracking:** `profiles.daily_edit_count`, `profiles.last_edit_date`. Check before processing. Reset daily (logic in worker or a separate cron).
+    *   **Potential challenges/clarifications:**
+        *   Daily reset logic for `daily_edit_count`. Can be done when a user makes their first edit of a new day.
+    *   **Edge cases/Error handling:**
+        *   Invalid file types/sizes.
+        *   AI errors.
+        *   Storage errors.
+        *   Limit reached messages.
+
+**4. Database schema design**
+    *   **Step-by-step breakdown:**
+        *   **`profiles` table (extend existing):**
+            *   `user_id` (TEXT, PK, from Clerk)
+            *   `email` (TEXT, from Clerk user, for convenience if needed)
+            *   `daily_edit_count` (INTEGER, NOT NULL, DEFAULT 0)
+            *   `last_edit_date` (TIMESTAMP WITH TIME ZONE)
+            *   `membership` (membership_enum, NOT NULL, DEFAULT 'free') - existing
+            *   `stripe_customer_id` (TEXT) - existing
+            *   `stripe_subscription_id` (TEXT) - existing
+            *   `created_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL) - existing
+            *   `updated_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL) - existing
+        *   **`edits` table (new):**
+            *   `id` (UUID, PK, DEFAULT uuid_generate_v4())
+            *   `user_id` (TEXT, NOT NULL, FK to `profiles.user_id` ON DELETE CASCADE)
+            *   `job_id` (UUID, NULLABLE, UNIQUE, FK to `image_processing_jobs.id` ON DELETE SET NULL) - to link to the processing job
+            *   `original_image_url` (TEXT, NOT NULL)
+            *   `original_image_filename` (TEXT, NOT NULL)
+            *   `edited_image_url` (TEXT)
+            *   `edited_image_filename` (TEXT)
+            *   `user_prompt_original` (TEXT, NOT NULL)
+            *   `user_prompt_translated` (TEXT)
+            *   `image_description_ai` (TEXT)
+            *   `status` (edit_status_enum: 'pending', 'processing', 'completed', 'failed', NOT NULL, DEFAULT 'pending')
+            *   `error_message` (TEXT)
+            *   `created_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL)
+            *   `updated_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL)
+        *   **`image_processing_jobs` table (new):**
+            *   `id` (UUID, PK, DEFAULT uuid_generate_v4())
+            *   `edit_id` (UUID, NOT NULL, UNIQUE, FK to `edits.id` ON DELETE CASCADE)
+            *   `user_id` (TEXT, NOT NULL, FK to `profiles.user_id` ON DELETE CASCADE)
+            *   `current_stage` (processing_stage_enum: 'pending_describe', 'describing_image', 'pending_translate', 'translating_prompt', 'pending_edit', 'editing_image', 'uploading_result', 'completed', 'failed', NOT NULL, DEFAULT 'pending_describe')
+            *   `stage_payload` (JSONB) - `{"originalImageUrl": "...", "userPrompt": "...", "aiImageDescription": "...", "promptLanguage": "ar/en", "translatedUserPrompt": "...", "editedImageBase64": "...", "editedImageUrl": "..."}`
+            *   `retry_count` (INTEGER, NOT NULL, DEFAULT 0)
+            *   `last_error` (TEXT)
+            *   `created_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL)
+            *   `updated_at` (TIMESTAMP WITH TIME ZONE, DEFAULT NOW(), NOT NULL)
+        *   **Enums:** `membership_enum` (existing: 'free', 'pro'), `edit_status_enum` (new), `processing_stage_enum` (new).
+    *   **Potential challenges/clarifications:**
+        *   Defining RLS policies for all tables and storage buckets.
+    *   **Edge cases/Error handling:** Schema includes fields for error messages and status.
+
+**5. Server actions and integrations**
+    *   **Step-by-step breakdown:**
+        *   **DB Actions (`actions/db/`):** CRUD for `edits`, `image_processing_jobs`. Update/Get for `profiles` (usage).
+        *   **AI Actions (`actions/ai/gemini-actions.ts`):**
+            *   `describeImage(base64Image: string): Promise<string>`
+            *   `detectLanguageAndTranslate(text: string): Promise<{ detectedLanguage: string, translatedText: string | null }>`
+            *   `generateImageEdit(base64Image: string, aiDescription: string, userPrompt: string): Promise<string (base64 edited image)>`
+        *   **Storage Actions (`actions/storage/image-storage-actions.ts`):**
+            *   `uploadImage(userId: string, file: File, type: 'original' | 'edited'): Promise<{ url: string, path: string, filename: string }>`
+            *   `getPublicUrl(path: string): string`
+        *   **Orchestration Actions/API Routes:**
+            *   `POST /api/orchestrator/start-edit` (Server Action `startImageEditProcessAction`): Validates, creates `edits` and `image_processing_jobs` entries. Increments/resets usage count.
+            *   `GET /api/jobs/[jobId]/status` (API Route): Client polls this to get job status.
+            *   `POST /api/orchestrator/worker` (API Route, cron-triggered): Fetches pending jobs, executes current stage, updates job.
+    *   **Potential challenges/clarifications:**
+        *   Security of the worker API route (e.g., cron secret).
+        *   Passing large base64 strings if not careful; workers should fetch images from storage URLs.
+    *   **Edge cases/Error handling:** Actions return `ActionState`. Robust error logging.
+
+**6. Design system and component architecture**
+    *   **Step-by-step breakdown:**
+        *   **Visual Style:** Reference Typography and Visual Design Elements from project request. Tajawal font, Shadcn components, Tailwind classes for backgrounds, borders, shadows, rounded corners. RTL support is critical.
+        *   **Core Components:**
+            *   `AppLayout` (`app/(app)/layout.tsx`): Includes `Sidebar`.
+            *   `Sidebar`: Links to Dashboard, Edit, History.
+            *   `NotificationArea`: To display global notifications (e.g., daily limit).
+    *   **Potential challenges/clarifications:** Ensuring global font and RTL styles are applied correctly.
+    *   **Edge cases/Error handling:** Components should have defined states for loading, error, empty.
+
+**7. Component Architecture (Server/Client)**
+    *   **Step-by-step breakdown:**
+        *   Pages (`page.tsx`) will be Server Components, fetching initial data via server actions.
+        *   Interactive UI (forms, image uploaders) will be Client Components in `_components/` directories.
+        *   `EditPage`: Main client component orchestrating form, uploader, and submission.
+        *   `ImageUploader`: Client component for file input, preview, client-side validation.
+        *   `HistoryItemCard`: Server or client, depending on interactivity.
+    *   **Potential challenges/clarifications:**
+        *   Managing loading/polling state on the `EditPage` client component.
+    *   **Edge cases/Error handling:** Client components display errors from server actions. Skeletons/Loaders.
+
+**8. Authentication and authorization implementation**
+    *   **Step-by-step breakdown:**
+        *   Clerk: `SignIn`, `SignUp` pages (starter has them). `UserButton`.
+        *   Middleware (`middleware.ts`): Protect `(app)/` routes.
+        *   `auth()` and `useUser()` for accessing user data.
+        *   Profile creation/update logic in `app/layout.tsx` or a dedicated webhook handler for Clerk user creation to populate `profiles` table with `userId` and `email`, and initialize `daily_edit_count`.
+    *   **Potential challenges/clarifications:** Syncing Clerk user data (especially email) to Supabase `profiles` reliably.
+    *   **Edge cases/Error handling:** Clerk errors, unauthorized access redirects.
+
+**9. Data flow and state management**
+    *   **Step-by-step breakdown:**
+        *   Server Components: Data via server actions.
+        *   Client Components: Props from server components, `useState`/`useReducer` for local UI state. For submitting forms, call server actions.
+        *   `EditPage` polling: `useEffect` with `fetch` to the `/api/jobs/[jobId]/status` endpoint.
+        *   No complex global state manager needed for Phase 1 beyond React Context for notifications if desired.
+    *   **Potential challenges/clarifications:** Keeping UI responsive during polling.
+    *   **Edge cases/Error handling:** Displaying feedback from polled status updates.
+
+**10. Stripe Integration**
+    *   **Step-by-step breakdown:**
+        *   Infrastructure is present in starter (`profiles` table fields, webhook).
+        *   For Phase 1 AisarEdit, this is "prepared for future use." No active subscription logic beyond the 'free' tier default.
+        *   Ensure new users default to 'free' and existing Stripe logic doesn't break anything.
+    *   **Potential challenges/clarifications:** None for Phase 1 as it's passive.
+    *   **Edge cases/Error handling:** N/A.
+
+**11. PostHog Analytics (or generic analytics hooks)**
+    *   **Step-by-step breakdown:**
+        *   Create `lib/analytics.ts` with a stub `trackEvent(eventName: string, properties?: Record<string, any>)` function.
+        *   This function will initially log to console or be a no-op.
+        *   Identify key event points in the code where `trackEvent` calls would be added later (e.g., `signup`, `image_edit_start`, `image_edit_success`, `image_edit_fail`, `daily_limit_hit`).
+    *   **Potential challenges/clarifications:** None for a stub implementation.
+    *   **Edge cases/Error handling:** N/A.
+
+**12. Testing**
+    *   **Step-by-step breakdown:**
+        *   **Unit Tests (Jest/Vitest):**
+            *   Utility functions (validation, text processing).
+            *   Server actions (mock DB/AI calls): focus on logic like usage limit checks, data transformation.
+        *   **E2E Tests (Playwright):**
+            *   Auth flow (signup, login).
+            *   Core edit flow: Upload image, enter prompt, submit, (mock backend processing), see result, download.
+            *   History page: View items, download.
+            *   Daily limit enforcement.
+    *   **Potential challenges/clarifications:** Effective mocking strategies for AI and Supabase. Handling Clerk auth in Playwright.
+    *   **Edge cases/Error handling:** Test UI display of error messages.
+
+**Security & Data Handling (reiteration from request):**
+*   Clerk for auth. HTTPS via Vercel. Supabase encryption at rest.
+*   RLS for Supabase:
+    *   `profiles`: Users can only read/update their own profile.
+    *   `edits`: Users can only CRUD their own edits.
+    *   `image_processing_jobs`: Users can only read their own jobs (or service role for workers).
+    *   Storage Buckets: Users can only upload to their own path prefix; public read for generated images if URLs are shared, or signed URLs.
+*   Rate limiting: Daily edit limit implemented. Consider Vercel's built-in protection.
+*   Data deletion: Clerk webhook for `user.deleted` to trigger cascade delete in Supabase or a cleanup job.
+*   Privacy/ToS: Add placeholder pages.
+
+**Environment Variables to Add/Update in `.env.example`:**
+*   `GEMINI_API_KEY=`
+*   `NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB=5`
+*   `AISEREDIT_ORIGINAL_IMAGES_BUCKET=aisaredit-original-images` (example name)
+*   `AISEREDIT_EDITED_IMAGES_BUCKET=aisaredit-edited-images` (example name)
+*   `AISEREDIT_MAX_DAILY_EDITS=5`
+*   `CRON_SECRET=` (for securing the worker API route if Vercel Cron is used)
+*   Remove `OPENAI_API_KEY` if not used.
+*   Remove `SUPABASE_BUCKET_RECEIPTS`.
+
+This detailed planning ensures all aspects of the project request and rules are considered.
+</specification_planning>
+
+```markdown
+# AisarEdit (أَيْسَر) Technical Specification
+
+## 1. System Overview
+
+### Core purpose and value proposition
+AisarEdit (أَيْسَر) is an Arabic-first web application designed for content creators and non-technical users to easily edit images using AI. Users describe desired changes in Arabic or English text, and the app leverages multiple AI models (Gemini) to generate the edited image, simplifying image editing without requiring technical expertise.
+
+### Key workflows
+1.  **User Authentication:** Users sign up or log in using Clerk. Upon successful authentication, they are redirected to their dashboard. User profiles, including usage data, are stored in Supabase.
+2.  **Image Editing Process:**
+    *   User uploads an image (JPG, PNG, WebP) and provides a textual prompt in Arabic or English.
+    *   The system initiates an asynchronous backend process.
+    *   **Stage 1 (AI Analysis):** A Gemini model analyzes the uploaded image and generates a short description.
+    *   **Stage 2 (AI Translation):** Another Gemini model detects the prompt's language and translates it to English if necessary.
+    *   **Stage 3 (AI Editing):** A third Gemini model processes the image based on the AI-generated description and the user's (possibly translated) prompt, generating the edited image.
+    *   The edited image is stored and displayed to the user with a download option.
+3.  **History Management:** All edits (original image, prompt, edited image) are saved to the user's history, accessible via the History page, where past edits can be viewed and downloaded.
+4.  **Usage Limiting:** Users are initially on a free tier, limited to 5 image edits per day. Usage is tracked, and notifications are provided when the limit is reached.
+
+### System architecture
+*   **Frontend:** Next.js 14 (App Router), React, Tailwind CSS (with RTL support), Shadcn UI components. Deployed on Vercel.
+*   **Backend:**
+    *   Next.js Server Actions for client-server communication and mutations.
+    *   Next.js API Routes for scheduled tasks (e.g., cron job worker) and polling endpoints.
+    *   Supabase: PostgreSQL for database (user profiles, edit history, processing jobs), Supabase Storage for image hosting.
+*   **Authentication:** Clerk for user management and authentication.
+*   **AI Processing:** Google Gemini API (multiple models for different tasks).
+*   **Orchestration:** An asynchronous workflow engine built using a Supabase table (`image_processing_jobs`) as a queue/state machine, and Next.js API Routes/Server Actions as "worker functions" for each processing stage. The client polls for status updates.
+
+## 2. Project Structure
+
+The project will follow the structure of the provided starter template, with additions for AisarEdit features:
+
+```
+.
+├── actions/
+│   ├── db/
+│   │   ├── profiles-actions.ts         # (existing, to be modified)
+│   │   ├── edits-actions.ts            # (new)
+│   │   └── image-processing-jobs-actions.ts # (new)
+│   ├── ai/
+│   │   └── gemini-actions.ts           # (new) AI model interactions
+│   ├── storage/
+│   │   └── image-storage-actions.ts    # (new) Supabase Storage interactions
+│   └── image-orchestration-actions.ts # (new) Main server action to start edit process
+├── app/
+│   ├── (auth)/                       # (existing) Clerk auth pages
+│   │   └── ...
+│   ├── (marketing)/                  # (existing) Landing page, etc.
+│   │   └── ...
+│   ├── (app)/                        # (new) Authenticated application routes
+│   │   ├── dashboard/
+│   │   │   └── page.tsx
+│   │   ├── edit/
+│   │   │   ├── _components/
+│   │   │   │   ├── edit-form.tsx         # Client component for the edit page
+│   │   │   │   └── image-uploader.tsx    # Client component for image uploading
+│   │   │   └── page.tsx
+│   │   ├── history/
+│   │   │   ├── _components/
+│   │   │   │   └── history-item.tsx      # Component for displaying a single history entry
+│   │   │   └── page.tsx
+│   │   └── layout.tsx                  # Layout for authenticated app (with sidebar)
+│   ├── api/
+│   │   ├── stripe/webhooks/route.ts    # (existing)
+│   │   ├── orchestrator/
+│   │   │   └── worker/route.ts         # (new) Cron-triggered worker for processing jobs
+│   │   └── jobs/
+│   │       └── [jobId]/
+│   │           └── status/route.ts     # (new) For client to poll job status
+│   ├── globals.css
+│   └── layout.tsx                    # Root layout (existing, to be modified for Tajawal font)
+├── components/
+│   ├── landing/                      # (existing)
+│   ├── magicui/                      # (existing)
+│   ├── utilities/                    # (existing)
+│   └── shared/                       # (new) Shared components across (app) routes
+│       ├── sidebar.tsx
+│       └── notification-toast.tsx
+├── db/
+│   ├── schema/
+│   │   ├── index.ts                  # (existing, to be modified)
+│   │   ├── profiles-schema.ts        # (existing, to be modified)
+│   │   ├── edits-schema.ts           # (new)
+│   │   └── image-processing-jobs-schema.ts # (new)
+│   └── db.ts                         # (existing, to be modified for new schemas)
+├── lib/
+│   ├── hooks/                        # (existing)
+│   ├── constants.ts                  # (new) App-wide constants (limits, formats)
+│   ├── analytics.ts                  # (new) Stub for analytics tracking
+│   ├── gemini.ts                     # (new) Gemini API client setup (if separate from actions)
+│   └── utils.ts                      # (existing, potentially add new utils)
+├── public/
+│   └── fonts/
+│       └── Tajawal-*.ttf             # (new) Font files
+├── types/
+│   ├── index.ts                      # (existing, to be modified)
+│   ├── server-action-types.ts        # (existing, ensure name `action-state-types.ts` as per rule example if needed)
+│   ├── image-processing-types.ts     # (new)
+│   └── gemini-types.ts               # (new)
+├── .env.example                      # (to be updated)
+└── middleware.ts                     # (existing, to be modified for (app) routes)
+```
+*   All new files and folders will use kebab-case.
+*   Each new file will have a comment at the top explaining its purpose.
+
+## 3. Feature Specification
+
+### 3.1 Authentication (Clerk)
+*   **User story:**
+    *   As a new user, I want to sign up for an account easily so I can start using the image editor.
+    *   As an existing user, I want to log in to my account securely to access my dashboard and past edits.
+    *   As a logged-in user, I want my session to be managed so I remain logged in across visits until I log out.
+*   **Requirements:**
+    *   User signup/login functionality using Clerk Auth.
+    *   Redirect to user dashboard (`/dashboard`) after successful authentication.
+    *   Arabic interface for Clerk components (if customization allows, or default Clerk localization).
+*   **Detailed implementation steps:**
+    1.  Utilize existing `/app/(auth)/login` and `/app/(auth)/signup` routes with Clerk components (`<SignIn>`, `<SignUp>`).
+    2.  Configure Clerk `forceRedirectUrl` or handle redirection programmatically to `/dashboard`.
+    3.  In the root layout (`app/layout.tsx`) or a Clerk webhook, ensure a user profile is created/updated in the Supabase `profiles` table upon new user signup or first login. This profile will link the Clerk `userId` and store AisarEdit-specific data.
+        *   `userId` (from Clerk)
+        *   `email` (from Clerk)
+        *   Initialize `daily_edit_count = 0` and `last_edit_date = null` or current date.
+    4.  Modify `middleware.ts` to protect all routes under `/app/(app)/`.
+*   **Error handling and edge cases:**
+    *   Clerk authentication errors: Display default Clerk error messages.
+    *   Failure to create/update Supabase profile: Log error; potentially retry or notify admin. User should still be able to use Clerk auth.
+
+### 3.2 User Interface (Arabic First, Responsive)
+*   **User story:**
+    *   As an Arabic-speaking user, I want the entire application interface to be in Arabic and support Right-to-Left (RTL) layout for a natural experience.
+    *   As a user on any device (desktop, tablet, mobile), I want the application to be responsive and easy to use.
+*   **Requirements:**
+    *   Arabic language interface throughout.
+    *   Mobile-responsive design for all pages.
+    *   Landing page (modify existing `(marketing)/page.tsx` or create new).
+    *   Dashboard with sidebar navigation (`/dashboard`).
+    *   Edit page for image processing (`/edit`).
+    *   History page to view past edits (`/history`).
+    *   Clear notification when daily edit limit is reached.
+*   **Detailed implementation steps:**
+    1.  **Global Styling:**
+        *   Set `dir="rtl"` on the `<html>` tag in `app/layout.tsx`.
+        *   Integrate Tailwind CSS RTL utilities (e.g., `space-x-reverse`, logical properties `ms-`, `me-`, etc.).
+        *   Set Tajawal as the global font family (see Typography Specifications).
+    2.  **Landing Page (`app/(marketing)/page.tsx`):**
+        *   Adapt content to AisarEdit, in Arabic. Showcase features. Call to action to signup/login.
+    3.  **App Layout (`app/(app)/layout.tsx`):**
+        *   Implement a two-column layout: `Sidebar` on the right (for RTL), main content area on the left.
+        *   `Sidebar`: Vertical navigation with links to Dashboard, Edit, History. Include `UserButton` from Clerk.
+    4.  **Dashboard Page (`app/(app)/dashboard/page.tsx`):**
+        *   Welcome message.
+        *   Brief overview of usage (e.g., "X edits remaining today").
+        *   Quick links to Edit and History pages.
+    5.  **Edit Page (`app/(app)/edit/page.tsx` & `_components/edit-form.tsx`):** See 3.3 Image Processing.
+    6.  **History Page (`app/(app)/history/page.tsx`):** See 3.4 History & Storage.
+    7.  **Notifications:** Use Shadcn `Toast` component (via `useToast` hook) for messages like "Daily edit limit reached," "Edit successful/failed."
+*   **Typography Specifications:**
+    *   **Font Family**: Tajawal (default). Set globally via `font-tajawal` class on `<body>` in `app/layout.tsx`.
+        ```css
+        /* app/globals.css */
+        @font-face {
+          font-family: 'Tajawal';
+          src: url('/fonts/Tajawal-Regular.ttf') format('truetype');
+          font-weight: 400; /* Regular */
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Tajawal';
+          src: url('/fonts/Tajawal-SemiBold.ttf') format('truetype'); /* Assuming SemiBold exists, or use Bold if not */
+          font-weight: 600; /* SemiBold */
+          font-style: normal;
+        }
+        @font-face {
+          font-family: 'Tajawal';
+          src: url('/fonts/Tajawal-Bold.ttf') format('truetype');
+          font-weight: 700; /* Bold */
+          font-style: normal;
+        }
+        body {
+          font-family: 'Tajawal', sans-serif;
+        }
+        ```
+    *   **Font Weights by Element (Tailwind examples provided in request):**
+        *   Main Headings (h1): `className="mb-6 text-center text-3xl font-bold tracking-tight md:text-4xl"`
+        *   Section Headings (h2): `className="text-xl font-semibold"`
+        *   Paragraph Text: `className="text-muted-foreground mb-8 text-center"` (default weight)
+        *   Error Messages: (default weight)
+*   **Visual Design Elements (Tailwind examples provided in request):**
+    *   Backgrounds: `bg-background`, `bg-muted/40`, `bg-destructive/10`.
+    *   Buttons: Shadcn Button (`primary`, `outline` variants).
+    *   Borders: `border`, `border-dashed`, `border-destructive`.
+    *   Text styling: `text-muted-foreground`, `text-destructive`.
+    *   Shadows: `shadow-sm`, `shadow-md`, `shadow-inner`.
+    *   Rounded corners: `rounded-md`, `rounded-lg`.
+*   **Error handling and edge cases:**
+    *   Ensure all text is translatable if future multi-language support is planned (for now, hardcode Arabic strings).
+    *   Test responsiveness thoroughly on various screen sizes.
+
+### 3.3 Image Processing
+*   **User story:**
+    *   As a user, I want to upload an image and describe the changes I want in text, so the AI can edit it for me.
+    *   As a user, I want to see the edited image and be able to download it.
+    *   As a user, I want the process to be clear, with feedback on status.
+*   **Requirements:**
+    *   Image upload (JPG, PNG, WebP), file size validation (e.g., 5MB defined in `lib/constants.ts`).
+    *   Text input for edit description (Arabic/English).
+    *   "Generate" button to trigger processing.
+    *   Backend orchestration: 3 Gemini models (Analyze image, LangDetect+Translate, Edit image).
+    *   Display edited image result.
+    *   Option to download edited image.
+    *   Save edits to history.
+*   **Detailed implementation steps (Frontend - `app/(app)/edit/_components/edit-form.tsx`):**
+    1.  **Image Upload (`image-uploader.tsx`):**
+        *   Use Shadcn `Input type="file"` or a custom drag-and-drop component.
+        *   Accept `image/jpeg, image/png, image/webp`.
+        *   Client-side validation for file type and size (`NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB`).
+        *   Display image preview. Store `File` object in state.
+    2.  **Text Input:**
+        *   Use Shadcn `Textarea` for user prompt. Support Arabic and English input.
+    3.  **Generate Button:**
+        *   Shadcn `Button`. Disabled if no image or prompt, or if processing.
+        *   On click:
+            *   Show loading state (e.g., spinner on button, message "Processing...").
+            *   Call `uploadImageStorageAction` (from `actions/storage/image-storage-actions.ts`) to upload the original image to Supabase Storage (e.g., `aisyaredit-original-images` bucket). This action should return the public URL and path.
+            *   If upload successful, call `startImageEditProcessAction` (from `actions/image-orchestration-actions.ts`) with the `originalImageUrl` and `userPrompt`. This action returns a `jobId`.
+            *   Store `jobId` in component state.
+            *   Start polling `GET /api/jobs/[jobId]/status` API route every few seconds.
+    4.  **Polling & Display (`edit-form.tsx`):**
+        *   `useEffect` hook for polling based on `jobId`.
+        *   API route `/api/jobs/[jobId]/status` will query `image_processing_jobs` table.
+        *   Update UI based on polled status:
+            *   `processing` (with current stage if available from job data).
+            *   `completed`: Fetch `edited_image_url` from job data or `edits` table. Display the edited image (e.g., `<img src={editedImageUrl} />`). Enable download button.
+            *   `failed`: Display error message from job data.
+    5.  **Download Button:**
+        *   Enabled when `edited_image_url` is available.
+        *   Standard HTML `<a>` tag with `href={editedImageUrl}` and `download` attribute.
+*   **Backend Orchestration (Server Actions & API Routes):**
+    1.  **`actions/image-orchestration-actions.ts -> startImageEditProcessAction(originalImageUrl, userPrompt)`:**
+        *   Check user's `daily_edit_count` from `profiles` table. If limit reached, return error.
+        *   Create an `edits` record (status `pending`, store `originalImageUrl`, `userPrompt`).
+        *   Create an `image_processing_jobs` record (current_stage `pending_describe`, payload with `originalImageUrl`, `userPrompt`, linked to `edits.id`).
+        *   If successful, increment `daily_edit_count` and update `last_edit_date` in `profiles`.
+        *   Return `ActionState<{ jobId: string }>`.
+    2.  **`app/api/orchestrator/worker/route.ts (POST, cron-triggered)`:**
+        *   Secure with `CRON_SECRET`.
+        *   Fetch a batch of pending jobs from `image_processing_jobs` (e.g., oldest, not failed too many times).
+        *   For each job, determine `current_stage` and execute:
+            *   **Stage 1 (pending_describe -> describing_image):**
+                *   Fetch original image from `job.stage_payload.originalImageUrl`, convert to base64.
+                *   Call `GeminiActions.describeImage(base64Image)`.
+                *   Update `job.stage_payload.aiImageDescription`, set `current_stage = 'pending_translate'`.
+            *   **Stage 2 (pending_translate -> translating_prompt):**
+                *   Call `GeminiActions.detectLanguageAndTranslate(job.stage_payload.userPrompt)`.
+                *   Update `job.stage_payload.promptLanguage`, `job.stage_payload.translatedUserPrompt`, set `current_stage = 'pending_edit'`.
+            *   **Stage 3 (pending_edit -> editing_image -> uploading_result):**
+                *   Fetch original image, convert to base64.
+                *   Call `GeminiActions.generateImageEdit(base64Image, job.stage_payload.aiImageDescription, job.stage_payload.translatedUserPrompt || job.stage_payload.userPrompt)`. Returns base64 edited image.
+                *   Convert base64 edited image to `File`/`Blob`.
+                *   Call `ImageStorageActions.uploadImage(userId, editedImageFile, 'edited')` to upload to Supabase Storage (e.g., `aisyaredit-edited-images` bucket).
+                *   Update `job.stage_payload.editedImageUrl`, set `current_stage = 'completed'`.
+                *   Update corresponding `edits` record: status `completed`, `edited_image_url`, `user_prompt_translated`, `image_description_ai`.
+            *   Handle errors at each stage: update `job.last_error`, `job.retry_count`. If max retries, set `job.current_stage = 'failed'` and update `edits.status = 'failed'`.
+    3.  **`app/api/jobs/[jobId]/status/route.ts (GET)`:**
+        *   Fetch job from `image_processing_jobs` by `jobId`.
+        *   Return relevant data: `{ status: job.current_stage, editedImageUrl: job.stage_payload.editedImageUrl, errorMessage: job.last_error }`.
+*   **Standard Contracts (JSON payload for `image_processing_jobs.stage_payload`):**
+    ```json
+    {
+      "originalImageUrl": "...",
+      "userPrompt": "...",
+      "aiImageDescription": "A cat sitting on a chair", // from Gemini 1
+      "promptLanguage": "ar", // from Gemini 2
+      "translatedUserPrompt": "A cat sitting on a chair", // from Gemini 2
+      "editedImageBase64": "...", // (optional, temporary storage if needed between steps, not ideal for large images)
+      "editedImageUrl": "..." // from Supabase storage after Gemini 3 and upload
+    }
+    ```
+*   **Error handling and edge cases:**
+    *   Invalid image format/size (client and server validation).
+    *   Gemini API errors (rate limits, content filters, failure to process): Log, update job status to `failed`, show user-friendly message. Implement retry logic in worker (e.g., up to 3 retries with exponential backoff).
+    *   Image upload/download failures from Supabase Storage.
+    *   Polling timeout on client-side if job takes too long.
+    *   User navigates away while processing: Job continues in backend. User can find result in History.
+
+### 3.4 History & Storage
+*   **User story:**
+    *   As a user, I want to see a history of all my image edits, including the original image, my prompt, and the final edited image, so I can easily find and reuse them.
+    *   As a user, I want to be able to download previously edited images from my history.
+*   **Requirements:**
+    *   Store edit history in Supabase (`edits` table).
+    *   Display previous edits on `/history` page (original image, prompt, result).
+    *   Download option for past edits.
+*   **Detailed implementation steps:**
+    1.  **Data Storage:** `edits` table schema (see Section 4). Data populated by the orchestration worker upon job completion/failure.
+    2.  **History Page (`app/(app)/history/page.tsx`):**
+        *   Server Component fetches user's edit history using `EditsActions.getEditHistoryAction(userId)`.
+        *   Display edits in a grid or list format using `app/(app)/history/_components/history-item.tsx`.
+        *   Each item shows:
+            *   Thumbnail of original image.
+            *   Thumbnail of edited image.
+            *   User prompt (original).
+            *   Timestamp of edit.
+            *   Status (completed/failed).
+    3.  **`history-item.tsx` Component:**
+        *   Receives a single edit record as a prop.
+        *   Displays data.
+        *   "Download" button for the edited image (if `status === 'completed'`). Links to `edited_image_url` with `download` attribute.
+        *   Option to view larger preview or re-open in editor (future enhancement).
+*   **Error handling and edge cases:**
+    *   No history found: Display an empty state message.
+    *   Error fetching history: Display error message.
+    *   Broken image links (if images were deleted from storage): Handle gracefully.
+
+### 3.5 Usage Tracking & Daily Limits
+*   **User story:**
+    *   As a free user, I understand there's a daily limit on edits, and I want to be informed when I reach it.
+*   **Requirements:**
+    *   Limit of 5 image edits per user per day (configurable via `AISEREDIT_MAX_DAILY_EDITS` env var).
+    *   Track usage in Supabase (`profiles` table: `daily_edit_count`, `last_edit_date`).
+    *   Clear notification when limit is reached.
+*   **Detailed implementation steps:**
+    1.  **Profile Fields:** `profiles` table to have `daily_edit_count` (INTEGER) and `last_edit_date` (TIMESTAMP).
+    2.  **Check & Reset Logic (in `actions/image-orchestration-actions.ts -> startImageEditProcessAction` before creating job):**
+        *   Get user's profile.
+        *   If `profile.last_edit_date` is not today:
+            *   Reset `profile.daily_edit_count = 0`.
+            *   Update `profile.last_edit_date` to today.
+        *   If `profile.daily_edit_count >= AISEREDIT_MAX_DAILY_EDITS`:
+            *   Return error: "Daily edit limit reached." Client displays this.
+    3.  **Increment Count:** If check passes and job creation is initiated, increment `profile.daily_edit_count` and save profile.
+    4.  **Notification:** Client component (`edit-form.tsx`) receives the error from server action and displays a toast notification.
+    5.  **Dashboard Display:** `dashboard/page.tsx` can fetch and show remaining edits for the day.
+*   **Error handling and edge cases:**
+    *   Race conditions if user attempts multiple edits simultaneously (DB transaction for profile update if possible, or pessimistic locking if Supabase supports it easily, otherwise, it's a minor edge case for a free tier).
+    *   Clock differences between server and client (use server's date for `last_edit_date`).
+
+## 4. Database Schema
+
+### 4.1 Tables
+*All timestamps are `TIMESTAMP WITH TIME ZONE`.*
+
+1.  **`profiles` (Extending existing)**
+    *   Purpose: Stores user-specific data, including authentication details and usage tracking.
+    *   Schema:
+        *   `user_id` (TEXT, PRIMARY KEY) - Clerk User ID
+        *   `email` (TEXT, UNIQUE) - User's email from Clerk
+        *   `membership` (membership_enum, NOT NULL, DEFAULT 'free') - Values: 'free', 'pro'
+        *   `stripe_customer_id` (TEXT, NULLABLE, UNIQUE)
+        *   `stripe_subscription_id` (TEXT, NULLABLE, UNIQUE)
+        *   `daily_edit_count` (INTEGER, NOT NULL, DEFAULT 0)
+        *   `last_edit_date` (TIMESTAMP WITH TIME ZONE, NULLABLE)
+        *   `created_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`)
+        *   `updated_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`) - Auto-updates on modification.
+    *   Indexes: `user_id`, `email`, `stripe_customer_id`, `stripe_subscription_id`.
+    *   RLS: Users can only read/update their own profile. Service role for backend operations.
+
+2.  **`edits` (New)**
+    *   Purpose: Stores history of each image editing attempt.
+    *   Schema:
+        *   `id` (UUID, PRIMARY KEY, DEFAULT `uuid_generate_v4()`)
+        *   `user_id` (TEXT, NOT NULL, FOREIGN KEY REFERENCES `profiles(user_id)` ON DELETE CASCADE)
+        *   `job_id` (UUID, NULLABLE, UNIQUE, FOREIGN KEY REFERENCES `image_processing_jobs(id)` ON DELETE SET NULL)
+        *   `original_image_url` (TEXT, NOT NULL) - URL from Supabase Storage
+        *   `original_image_filename` (TEXT, NOT NULL)
+        *   `edited_image_url` (TEXT, NULLABLE) - URL from Supabase Storage
+        *   `edited_image_filename` (TEXT, NULLABLE)
+        *   `user_prompt_original` (TEXT, NOT NULL)
+        *   `user_prompt_translated` (TEXT, NULLABLE)
+        *   `image_description_ai` (TEXT, NULLABLE) - Description from Gemini 1
+        *   `status` (edit_status_enum, NOT NULL, DEFAULT 'pending') - Values: 'pending', 'processing', 'completed', 'failed'
+        *   `error_message` (TEXT, NULLABLE)
+        *   `created_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`)
+        *   `updated_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`) - Auto-updates.
+    *   Indexes: `user_id`, `job_id`, `created_at`.
+    *   RLS: Users can only CRUD their own edits. Service role for backend.
+
+3.  **`image_processing_jobs` (New)**
+    *   Purpose: Manages the state and payload for the asynchronous multi-stage image editing process.
+    *   Schema:
+        *   `id` (UUID, PRIMARY KEY, DEFAULT `uuid_generate_v4()`)
+        *   `edit_id` (UUID, NOT NULL, UNIQUE, FOREIGN KEY REFERENCES `edits(id)` ON DELETE CASCADE)
+        *   `user_id` (TEXT, NOT NULL, FOREIGN KEY REFERENCES `profiles(user_id)` ON DELETE CASCADE)
+        *   `current_stage` (processing_stage_enum, NOT NULL, DEFAULT 'pending_describe') - Values: 'pending_describe', 'describing_image', 'pending_translate', 'translating_prompt', 'pending_edit', 'editing_image', 'uploading_result', 'completed', 'failed'
+        *   `stage_payload` (JSONB, NULLABLE) - Stores intermediate data like URLs, descriptions, prompts.
+            ```json
+            // Example structure for stage_payload
+            {
+              "originalImageUrl": "string",
+              "originalImageFilename": "string",
+              "userPrompt": "string",
+              "aiImageDescription": "string | null",
+              "promptLanguage": "string | null", // 'ar', 'en', etc.
+              "translatedUserPrompt": "string | null",
+              "editedImageStoragePath": "string | null", // Path in Supabase storage before public URL
+              "editedImageUrl": "string | null",
+              "editedImageFilename": "string | null"
+            }
+            ```
+        *   `retry_count` (INTEGER, NOT NULL, DEFAULT 0)
+        *   `last_error` (TEXT, NULLABLE)
+        *   `created_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`)
+        *   `updated_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`) - Auto-updates.
+    *   Indexes: `edit_id`, `user_id`, `current_stage`, `created_at`.
+    *   RLS: Service role access primarily. Users might read status via a secure view/RPC if needed, or rely on API.
+
+4.  **Enums (Drizzle `pgEnum`)**
+    *   `membership_enum`: ('free', 'pro') - (Existing)
+    *   `edit_status_enum`: ('pending', 'processing', 'completed', 'failed')
+    *   `processing_stage_enum`: ('pending_describe', 'describing_image', 'pending_translate', 'translating_prompt', 'pending_edit', 'editing_image', 'uploading_result', 'completed', 'failed')
+
+### Drizzle Schema Files (`db/schema/*.ts`):
+Files like `profiles-schema.ts`, `edits-schema.ts`, `image-processing-jobs-schema.ts` will define these tables using Drizzle ORM syntax. `db/schema/index.ts` will export all schemas. `db/db.ts` will include them in the Drizzle client instance.
+
+## 5. Server Actions
+
+All server actions will return `Promise<ActionState<T>>`.
+`ActionState` type: `types/server-action-types.ts` (or `action-state-types.ts`)
+```typescript
+// types/action-state-types.ts
+export interface ActionState<T> {
+  isSuccess: boolean;
+  message: string;
+  data?: T;
+}
+```
+
+### 5.1 Database Actions (`actions/db/`)
+
+1.  **`profiles-actions.ts`**
+    *   `getProfileByUserIdAction(userId: string): Promise<ActionState<SelectProfile>>` (Existing)
+    *   `createProfileOnSignupAction(data: { userId: string; email: string | null }): Promise<ActionState<SelectProfile>>` (Modify/ensure this logic for new user sync)
+    *   `updateProfileUsageAction(userId: string, editsIncrement: number): Promise<ActionState<SelectProfile>>`
+        *   Description: Updates `daily_edit_count` and `last_edit_date`. Resets count if `last_edit_date` is not today.
+        *   Input: `userId`, `editsIncrement` (typically 1).
+        *   Operations: Read profile, check `last_edit_date`, update count and date, save.
+    *   `getProfileForUsageCheckAction(userId: string): Promise<ActionState<{ dailyEditCount: number; lastEditDate: Date | null; membership: string }>>`
+        *   Description: Retrieves specific fields for usage limit check.
+        *   Input: `userId`.
+        *   Operations: Read profile, return relevant fields.
+
+2.  **`edits-actions.ts`**
+    *   `createEditRecordAction(data: InsertEdit): Promise<ActionState<SelectEdit>>`
+    *   `updateEditRecordAction(editId: string, data: Partial<UpdateEdit>): Promise<ActionState<SelectEdit>>`
+    *   `getEditHistoryAction(userId: string, page?: number, limit?: number): Promise<ActionState<SelectEdit[]>>`
+    *   `getEditByIdAndUserAction(editId: string, userId: string): Promise<ActionState<SelectEdit | null>>`
+
+3.  **`image-processing-jobs-actions.ts`**
+    *   `createImageProcessingJobAction(data: InsertImageProcessingJob): Promise<ActionState<SelectImageProcessingJob>>`
+    *   `getImageProcessingJobByIdAction(jobId: string): Promise<ActionState<SelectImageProcessingJob | null>>`
+    *   `updateImageProcessingJobAction(jobId: string, data: Partial<UpdateImageProcessingJob>): Promise<ActionState<SelectImageProcessingJob>>`
+    *   `getNextPendingJobsAction(batchSize: number): Promise<ActionState<SelectImageProcessingJob[]>>` (for worker)
+    *   `getJobStatusForUserAction(jobId: string, userId: string): Promise<ActionState<{ status: string; editedImageUrl?: string; errorMessage?: string }>>`
+
+### 5.2 Other Actions
+
+1.  **`actions/image-orchestration-actions.ts`**
+    *   `startImageEditProcessAction(originalImagePublicUrl: string, originalImageFilename: string, userPrompt: string): Promise<ActionState<{ jobId: string }>>`
+        *   Description: Main action called by client. Checks usage, creates `edits` and `image_processing_jobs` records.
+        *   Input: URL of original image in Supabase Storage, original filename, user prompt.
+        *   Internally calls `getProfileForUsageCheckAction`, `createEditRecordAction`, `createImageProcessingJobAction`, `updateProfileUsageAction`.
+
+2.  **`actions/ai/gemini-actions.ts`**
+    *   All functions here will interact with the Gemini API using `process.env.GEMINI_API_KEY`. Images will be passed as base64 strings to Gemini if required by its API for image input, or URLs if supported. For image generation output, Gemini will return base64.
+    *   `describeImageWithGemini(imageUrl: string): Promise<ActionState<{ description: string }>>`
+        *   Description: Fetches image from `imageUrl`, converts to base64, sends to Gemini Model 1 for description.
+    *   `detectLanguageAndTranslateWithGemini(text: string): Promise<ActionState<{ detectedLanguage: string; translatedText: string | null }>>`
+        *   Description: Sends text to Gemini Model 2 for language detection and translation (if Arabic to English).
+    *   `editImageWithGemini(imageUrl: string, aiDescription: string, userPromptForEditing: string): Promise<ActionState<{ editedImageBase64: string }>>`
+        *   Description: Fetches image from `imageUrl`, converts to base64. Sends base64 image, AI description, and user prompt to Gemini Model 3 for editing. Returns edited image as base64.
+
+3.  **`actions/storage/image-storage-actions.ts`**
+    *   Uses Supabase client for storage operations. Bucket names from env vars (`AISEREDIT_ORIGINAL_IMAGES_BUCKET`, `AISEREDIT_EDITED_IMAGES_BUCKET`).
+    *   File path structure: `{bucketName}/{userId}/{timestamp}_{filename}`.
+    *   `uploadImageToSupabaseStorageAction(userId: string, file: File, type: 'original' | 'edited'): Promise<ActionState<{ publicUrl: string; path: string; filename: string }>>`
+        *   Description: Uploads a file to the appropriate Supabase Storage bucket.
+        *   Input: `userId`, `File` object, `type` to determine bucket.
+        *   Returns public URL, storage path, and stored filename.
+    *   `getImagePublicUrlAction(path: string): Promise<ActionState<{ publicUrl: string }>>` (Supabase `getPublicUrl` is synchronous, but wrap in action for consistency).
+
+### 5.3 API Routes
+
+1.  **`app/api/orchestrator/worker/route.ts (POST)`**
+    *   Description: Triggered by a cron job (e.g., Vercel Cron) to process pending image editing jobs.
+    *   Authentication: Secured by a secret key (`CRON_SECRET`) passed in headers/body.
+    *   Logic:
+        1.  Calls `ImageProcessingJobsActions.getNextPendingJobsAction()`.
+        2.  For each job, executes the appropriate stage logic (calling Gemini actions, storage actions).
+        3.  Updates job status and payload via `ImageProcessingJobsActions.updateImageProcessingJobAction()`.
+        4.  Updates `edits` table via `EditsActions.updateEditRecordAction()` upon final completion or failure.
+        5.  Handles retries and permanent failures.
+
+2.  **`app/api/jobs/[jobId]/status/route.ts (GET)`**
+    *   Description: Polled by the client to get the status of an ongoing image editing job.
+    *   Authentication: Clerk `auth()` to ensure user can only access their own job status.
+    *   Logic:
+        1.  Extracts `jobId` from path.
+        2.  Calls `ImageProcessingJobsActions.getJobStatusForUserAction(jobId, userId)`.
+        3.  Returns JSON response: `{ status: string, editedImageUrl?: string, errorMessage?: string }`.
+
+## 6. Design System
+
+### 6.1 Visual Style (Arabic First, RTL)
+*   **Directionality:** `dir="rtl"` on `<html>`. All styling to use logical properties (e.g., `margin-inline-start` via Tailwind's `ms-`, `me-` classes).
+*   **Color Palette (Tailwind semantic colors from `globals.css`):**
+    *   Background: `bg-background`
+    *   Foreground: `text-foreground`
+    *   Primary: `bg-primary`, `text-primary-foreground` (for buttons, accents)
+    *   Muted: `bg-muted`, `text-muted-foreground` (for secondary text, subtle backgrounds `bg-muted/40`)
+    *   Destructive: `bg-destructive`, `text-destructive` (for errors, destructive actions `bg-destructive/10`)
+    *   Borders: `border-border`
+*   **Typography:**
+    *   Font Family: **Tajawal** (Regular 400, SemiBold 600, Bold 700). Loaded via `@font-face` from `/public/fonts/` and applied globally.
+    *   Main Headings (h1): `text-3xl md:text-4xl font-bold` (Tajawal Bold)
+    *   Section Headings (h2): `text-xl font-semibold` (Tajawal SemiBold)
+    *   Paragraph/Text: Default weight (Tajawal Regular)
+    *   Error Messages: Default weight (Tajawal Regular), `text-destructive`.
+*   **Component Styling:**
+    *   Use Shadcn UI components, styled with Tailwind CSS.
+    *   Buttons: `primary` and `outline` variants primarily.
+    *   Borders: `border`, `border-dashed` (for dropzones), `border-destructive` (for error states on inputs).
+    *   Shadows: `shadow-sm`, `shadow-md`, `shadow-inner` for depth.
+    *   Rounded Corners: `rounded-md`, `rounded-lg` for consistency.
+*   **Spacing and Layout:** Tailwind spacing scale. Responsive grids and flexbox for layout.
+
+### 6.2 Core Components
+
+1.  **`app/(app)/layout.tsx` (`AppLayout`)**
+    *   Structure:
+        ```tsx
+        <div className="flex h-screen">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+            {children}
+          </main>
+        </div>
+        ```
+    *   Manages the overall structure for authenticated parts of the app.
+
+2.  **`components/shared/sidebar.tsx` (`Sidebar`)**
+    *   Props: None (fetches nav items internally or has them static).
+    *   Usage: Displayed on the right (RTL). Contains navigation links (Dashboard, Edit, History) styled with Shadcn `Button` (variant `ghost` or custom nav item style) and `lucide-react` icons. Includes Clerk `<UserButton />`.
+    *   Interactive states: Hover, active link highlighting.
+
+3.  **`components/shared/notification-toast.tsx`**
+    *   Leverages Shadcn `Toast` and `useToast` hook.
+    *   Functions like `showSuccessToast(message)`, `showErrorToast(message)` to be called from client components or after server action responses.
+
+## 7. Component Architecture
+
+### 7.1 Server Components
+*   **Pages (`app/(app)/**/page.tsx`):**
+    *   Default to Server Components.
+    *   Data fetching: Call Server Actions directly within the component (e.g., `await getEditHistoryAction(userId)` in `history/page.tsx`).
+    *   Suspense: Wrap data-fetching parts in `<Suspense fallback={<LoadingSkeleton />}>` for better UX.
+    *   Error handling: Use `try-catch` around Server Action calls or check `ActionState.isSuccess`. Display dedicated error components.
+    *   Props: Pass fetched data as props to child Client Components if needed.
+    *   Example `app/(app)/history/page.tsx`:
+        ```tsx
+        // app/(app)/history/page.tsx
+        "use server";
+        import { Suspense } from "react";
+        import { getEditHistoryAction } from "@/actions/db/edits-actions";
+        import HistoryList from "./_components/history-list"; // Client or Server component
+        import HistorySkeleton from "./_components/history-skeleton";
+        import { auth } from "@clerk/nextjs/server";
+        import { redirect } from "next/navigation";
+
+        export default async function HistoryPage() {
+          const { userId } = auth();
+          if (!userId) redirect("/login");
+
+          return (
+            <div>
+              <h1 className="mb-6 text-3xl font-bold">سجل التعديلات</h1>
+              <Suspense fallback={<HistorySkeleton />}>
+                <HistoryFetcher userId={userId} />
+              </Suspense>
+            </div>
+          );
+        }
+
+        async function HistoryFetcher({ userId }: { userId: string }) {
+          const result = await getEditHistoryAction(userId);
+          if (!result.isSuccess || !result.data) {
+            return <p>خطأ في تحميل السجل أو لا يوجد تعديلات سابقة.</p>;
+          }
+          return <HistoryList edits={result.data} />;
+        }
+        ```
+
+### 7.2 Client Components
+*   Marked with `"use client"`.
+*   **`app/(app)/edit/_components/edit-form.tsx`:**
+    *   State Management: `useState` for form inputs (prompt), selected file, loading state, `jobId`, polling result.
+    *   Event Handlers: `onSubmit` for form, `onChange` for inputs.
+    *   UI Interactions: File selection, button clicks, displaying processing status and results.
+    *   Calls Server Actions: `startImageEditProcessAction`, `uploadImageToSupabaseStorageAction`. Handles `ActionState` response.
+    *   Polling: `useEffect` to poll `/api/jobs/[jobId]/status`.
+    *   Props: None initially, may take user data if needed.
+*   **`app/(app)/edit/_components/image-uploader.tsx`:**
+    *   State Management: `useState` for file preview, drag state.
+    *   Event Handlers: `onDrop`, `onChange` for file input.
+    *   UI Interactions: Drag-and-drop UI, file selection dialog, image preview.
+    *   Props: `onFileSelect: (file: File) => void`, `maxSizeMB: number`, `acceptedMimeTypes: string[]`.
+*   **`app/(app)/history/_components/history-list.tsx` (if client for interactions):**
+    *   Props: `edits: SelectEdit[]`.
+    *   Maps over `edits` to render `HistoryItem` components. Handles client-side filtering or sorting if added later.
+*   **`app/(app)/history/_components/history-item.tsx`:**
+    *   Props: `edit: SelectEdit`.
+    *   Displays individual edit details. Download button is a simple link.
+
+## 8. Authentication & Authorization
+*   **Clerk Implementation:**
+    *   `<ClerkProvider>` in `app/layout.tsx`.
+    *   Standard sign-in (`/login`), sign-up (`/signup`) pages from `app/(auth)/`.
+    *   `<UserButton />` in `Sidebar` for user profile management and sign-out.
+*   **Protected Routes:** `middleware.ts` configured to protect all routes under `/app/(app)/*`. Unauthenticated users redirected to `/login`.
+    ```typescript
+    // middleware.ts
+    import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+    import { NextResponse } from "next/server";
+
+    const isProtectedRoute = createRouteMatcher(["/dashboard(.*)", "/edit(.*)", "/history(.*)", "/app/(.*)"]); // Adjust matcher
+    const isPublicRoute = createRouteMatcher(["/", "/login(.*)", "/signup(.*)", "/api/stripe/webhooks(.*)"]); // Add other public routes like landing
+
+    export default clerkMiddleware(async (auth, req) => {
+      if (!isPublicRoute(req) && isProtectedRoute(req)) {
+        auth().protect(); // Protects if not public and is protected
+      }
+      return NextResponse.next();
+    });
+
+    export const config = {
+      matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+    };
+    ```
+*   **Session Management:** Handled by Clerk. Tokens stored in cookies.
+*   **Profile Sync:** Root layout (`app/layout.tsx`) will ensure Supabase `profiles` entry:
+    ```tsx
+    // app/layout.tsx (simplified snippet)
+    import { createProfileOnSignupAction, getProfileByUserIdAction } from "@/actions/db/profiles-actions";
+    // ...
+    const { userId, user } = await auth();
+    if (userId && user) {
+      const profileRes = await getProfileByUserIdAction(userId);
+      if (!profileRes.isSuccess) { // Assuming error means not found for a new user
+        await createProfileOnSignupAction({ userId, email: user.emailAddresses?.[0]?.emailAddress || null });
+      }
+    }
+    ```
+
+## 9. Data Flow
+*   **Server -> Client:** Server Components fetch data via Server Actions and pass it as props to Client Components.
+*   **Client -> Server:** Client Components invoke Server Actions to mutate data or trigger backend processes.
+*   **Client-Side State:** React `useState`, `useReducer` for form data, UI state.
+*   **Image Processing Flow:**
+    1.  Client (`EditForm`) uploads image to Supabase via `uploadImage...Action`, gets URL.
+    2.  Client calls `startImageEditProcessAction` with image URL and prompt. Gets `jobId`.
+    3.  Client polls `GET /api/jobs/[jobId]/status` using `fetch` in a `useEffect`.
+    4.  API route reads job status from `image_processing_jobs` table.
+    5.  Client updates UI based on polled status.
+*   **Backend Orchestration Data Flow:**
+    *   `image_processing_jobs.stage_payload` (JSONB) stores intermediate data between stages (URLs, descriptions, translated text).
+    *   Worker API route reads this payload, performs a stage, updates the payload and `current_stage`.
+
+## 10. Stripe Integration
+*   **Status:** Prepared for future use, as per project request. Starter template has base integration.
+*   **Payment Flow (Future):** Standard Stripe Checkout session creation, webhook handling for subscription status changes.
+*   **Webhook Handling (`app/api/stripe/webhooks/route.ts`):** Existing webhook handler will update `profiles.membership` and Stripe IDs. For Phase 1, ensure it doesn't interfere with the 'free' tier default.
+*   **Product/Price Config (Future):** Will be configured in Stripe Dashboard. Product metadata will link to membership Tiers (e.g., 'pro').
+
+## 11. Analytics Hooks
+*   **Strategy:** Prepare for future integration.
+*   **Implementation (`lib/analytics.ts`):**
+    ```typescript
+    // lib/analytics.ts
+    // This is a stub for future analytics integration (e.g., PostHog, Vercel Analytics)
+    // For now, it can log to console in development or be a no-op.
+
+    interface EventProperties {
+      [key: string]: any;
+    }
+
+    export function trackEvent(eventName: string, properties?: EventProperties): void {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Analytics Event]: ${eventName}`, properties || '');
+      }
+      // In the future, integrate with an analytics service here
+      // e.g., posthog.capture(eventName, properties);
+    }
+    ```
+*   **Key Events to Track (examples for future):**
+    *   `user_signed_up`
+    *   `user_logged_in`
+    *   `image_uploaded` (properties: fileSize, fileType)
+    *   `edit_submitted` (properties: promptLanguage, promptLength)
+    *   `edit_processing_started` (properties: jobId)
+    *   `edit_completed` (properties: jobId, processingDuration)
+    *   `edit_failed` (properties: jobId, errorStage, errorMessage)
+    *   `edited_image_downloaded`
+    *   `history_viewed`
+    *   `daily_limit_reached_notification_shown`
+
+## 12. Testing
+
+### Unit Tests (Jest or Vitest)
+*   **Setup:** Configure Jest/Vitest for Next.js. Mock Supabase client, Clerk, Gemini API.
+*   **Test Cases for Server Actions:**
+    *   `profiles-actions`: Test `updateProfileUsageAction` logic for count reset and increment.
+    *   `gemini-actions`: Mock Gemini API responses and test data transformation.
+    *   `image-orchestration-actions`: Test usage limit checks, correct creation of job/edit records.
+*   **Test Cases for Utilities:**
+    *   Any validation functions in `lib/utils.ts`.
+    *   File type/size validation logic.
+
+### E2E Tests (Playwright)
+*   **Setup:** Configure Playwright for Next.js. Develop helper functions for Clerk authentication flow.
+*   **Key User Flows to Test:**
+    1.  **Authentication:** Signup, login, logout.
+    2.  **Happy Path Image Editing:**
+        *   Log in. Navigate to Edit page.
+        *   Upload valid image. Enter prompt.
+        *   Click "Generate."
+        *   Mock backend orchestration to return "completed" status with a dummy edited image URL after a short delay.
+        *   Verify edited image is displayed.
+        *   Verify download button works (downloads a dummy file).
+        *   Verify edit appears in History page.
+    3.  **Daily Limit:**
+        *   Perform max edits (mocking success).
+        *   Attempt one more edit. Verify "limit reached" notification.
+    4.  **Error Handling (Edit Page):**
+        *   Upload invalid file type/size. Verify error message.
+        *   Mock backend orchestration to return "failed" status. Verify error message on Edit page.
+    5.  **History Page:**
+        *   Log in. Navigate to History.
+        *   Verify past edits (mocked) are listed.
+        *   Verify download from history item.
+
+## Environment Variables (`.env.example`)
+```env
+# DB
+DATABASE_URL=
+
+# Supabase
+SUPABASE_URL=your-supabase-url
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+AISEREDIT_ORIGINAL_IMAGES_BUCKET=aisaredit-original-images
+AISEREDIT_EDITED_IMAGES_BUCKET=aisaredit-edited-images
+
+# Auth (Clerk)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup
+# Optional: Clerk webhook secret if used for profile sync
+# CLERK_WEBHOOK_SECRET=
+
+# Payments (Stripe - for future use)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PAYMENT_LINK_YEARLY=
+NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MONTHLY=
+
+# AI (Gemini)
+GEMINI_API_KEY=your-gemini-api-key
+
+# Application Specific
+NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB=5
+AISEREDIT_MAX_DAILY_EDITS=5
+CRON_SECRET=your-strong-cron-secret # For securing the worker API route
+
+# Vercel (automatically set during deployment)
+# VERCEL_URL=
+```
+
+## Security & Data Handling RLS Policies (SQL for Supabase Editor)
+
+```sql
+-- Enable RLS for all relevant tables
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE edits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE image_processing_jobs ENABLE ROW LEVEL SECURITY;
+
+-- Profiles Table
+CREATE POLICY "Users can read their own profile"
+ON profiles FOR SELECT USING (auth.uid()::text = user_id);
+
+CREATE POLICY "Users can update their own profile"
+ON profiles FOR UPDATE USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
+
+-- Edits Table
+CREATE POLICY "Users can CRUD their own edits"
+ON edits FOR ALL USING (auth.uid()::text = user_id);
+
+-- Image Processing Jobs Table
+CREATE POLICY "Users can read status of their own jobs" -- (If direct table read is allowed, otherwise API handles this)
+ON image_processing_jobs FOR SELECT USING (auth.uid()::text = user_id);
+-- Backend worker will use service_role key, bypassing RLS.
+
+-- Supabase Storage Buckets (example names: aisaredit-original-images, aisaredit-edited-images)
+-- Bucket: aisaredit-original-images (Private or secured by RLS)
+CREATE POLICY "Users can upload original images to their own folder"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'aisyaredit-original-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users can read their own original images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'aisyaredit-original-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Bucket: aisaredit-edited-images (Public read for completed images, or signed URLs)
+-- Option 1: Public bucket for edited images (simpler if direct URLs are fine)
+-- (No specific RLS needed for read if bucket is public)
+-- Option 2: Private bucket, use signed URLs or RLS for user-specific read
+CREATE POLICY "Users can read their own edited images"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'aisyaredit-edited-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Allow service role full access for backend operations on storage if needed
+-- (Typically service role key bypasses RLS by default for storage operations if used from backend)
+```
+Note: File paths in storage policies like `(storage.foldername(name))[1]` assume `userId` is the first part of the path. E.g., `userId/timestamp_filename.jpg`. Adjust if path structure is different.
+Make sure to create the buckets in Supabase UI (`aisyaredit-original-images`, `aisyaredit-edited-images`). `aisyaredit-edited-images` can be public if direct URLs are used, otherwise keep private and generate signed URLs for download.
+
+Data Deletion: Implement a Clerk webhook for `user.deleted` event. The webhook handler (a Next.js API route) should use the Supabase service role key to delete the user's profile from `profiles` table. Cascade delete on `edits` and `image_processing_jobs` tables will handle related data. Images in Supabase Storage should also be deleted (list objects by user's prefix and batch delete).
+
+Privacy Policy / Terms of Service: Create placeholder pages in `app/(marketing)/privacy/page.tsx` and `app/(marketing)/terms/page.tsx`.
+```

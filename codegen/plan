@@ -1,0 +1,645 @@
+<brainstorming>
+The user wants a detailed, step-by-step implementation plan for the AisarEdit web application. The plan needs to be broken down into small, manageable steps suitable for an AI code generator. Each step must be atomic, modify a limited number of files (max 20, ideally less), and include the task, affected files, dependencies, and any user instructions.
+
+My process will be to:
+1.  **Understand Core Requirements**: Review the `<project_request>` and `<technical_specification>` (especially the `specification_planning` and the detailed spec sections) to ensure all features and technical aspects are covered. The existing `<starter_template>` structure and rules from `<project_rules>` must be respected.
+2.  **Identify Key Modules/Features**: Break down the application into high-level modules like Authentication, UI (Layout, Pages, Components), Image Processing (Frontend & Backend Orchestration), History, Database, etc.
+3.  **Sequence Implementation Logically**:
+    *   Start with foundational setup: Environment, global styles, fonts, basic project structure adjustments.
+    *   Define database schemas.
+    *   Implement core backend logic: Server Actions for DB, AI, and Storage.
+    *   Build out the orchestration backend (API routes for worker, job status).
+    *   Integrate authentication and user profile synchronization.
+    *   Develop UI layouts and shared components.
+    *   Implement individual pages and their specific components, feature by feature.
+    *   Address security aspects like RLS policies.
+    *   Include stubs for analytics.
+    *   Outline testing steps.
+4.  **Define Atomic Steps**: For each module/feature, create granular steps. Each step should be a single, coherent task.
+    *   **Task**: Clear, detailed description of what to implement.
+    *   **Files**: List of files to be created or modified. I will ensure this list is small.
+    *   **Step Dependencies**: List previous step numbers that this step depends on. This is crucial for sequential execution.
+    *   **User Instructions**: Any manual actions the user needs to perform (e.g., installing npm packages if not in starter, running SQL for RLS, Supabase bucket creation, Vercel cron job setup in `vercel.json`).
+5.  **Adhere to Formatting**: Use the specified Markdown format.
+6.  **Consider Project Rules**: Ensure the plan implicitly guides the AI to follow rules regarding file naming (kebab-case), component types (`use server`/`use client`), import paths (`@/`), etc.
+
+**Pre-computation/Pre-analysis based on inputs:**
+
+*   **Environment Variables**: The `specification_planning` already lists necessary additions/updates to `.env.example`. This will be an early step.
+*   **Project Structure**: The technical specification provides a target project structure. Steps will involve creating these new directories and files.
+*   **Database Schema**: Details are in `specification_planning` and section 4 of the technical spec. This will be broken down into creating enums, then each new table schema, and modifying the existing `profiles` schema.
+*   **Orchestration Logic**: This is the most complex part. It involves:
+    *   An initial server action (`startImageEditProcessAction`) to create job records.
+    *   A cron-triggered API route (`/api/orchestrator/worker/route.ts`) to process jobs in stages.
+    *   An API route (`/api/jobs/[jobId]/status/route.ts`) for client polling.
+    *   The `image_processing_jobs` table acts as a queue.
+*   **Gemini Integration**: `actions/ai/gemini-actions.ts` will encapsulate the three different Gemini model calls. The "Example of # Multi-Stage Gemini Image Editing Pipeline with Supabase Functions" provides excellent guidance on how these functions should work, which I will adapt to Next.js Server Actions and API routes.
+*   **RTL Support**: Crucial. An early step for `app/layout.tsx` (`dir="rtl"`) and `app/globals.css` (Tailwind RTL setup). Components will need to use logical properties (e.g., `ms-`, `me-`). Shadcn UI components should be checked for RTL compatibility.
+*   **Clerk Auth**: The starter template has basic Clerk setup. This will need to be extended for profile sync with the `profiles` table and protecting `(app)` routes.
+*   **Supabase Storage**: Buckets for original and edited images. RLS policies will be needed.
+*   **Typography & Visuals**: The project request has specific font (Tajawal) and Tailwind class usage. This needs to be integrated into global styles and component implementations.
+
+**Refining the Plan Structure:**
+
+I'll use the suggested section names from the technical specification and the `specification_planning` document where appropriate. I'll ensure dependencies are explicit.
+
+A potential challenge is keeping steps truly atomic while making progress. For instance, implementing a full server action file with multiple CRUD operations might be too large for one step if it touches many helper types or schema files implicitly. I'll aim for creating/modifying 3-5 files per step on average, with a hard cap of 20.
+
+**Self-Correction/Refinement during plan generation:**
+
+*   If a step seems too large (too many files or too complex logic), I will break it down further. For example, instead of "Implement Edit Page UI", it might be "Implement Edit Page basic structure", then "Implement ImageUploader component for Edit Page", then "Implement Edit Form fields", etc.
+*   I will ensure user instructions are very specific, especially for Supabase configurations (RLS SQL) and Vercel (cron job setup in `vercel.json`).
+*   The starter template's `actions/db/profiles-actions.ts` will be modified, not just new actions created. This should be explicit.
+*   The type definitions (`types/image-processing-types.ts`, `types/gemini-types.ts`) will be created as needed by the actions or components that use them, or as dedicated early steps.
+*   The `lib/constants.ts` will be an early step to define application-wide constants like upload limits.
+
+The plan will be organized into phases or major sections to make it easier to follow.
+The "Example of # Multi-Stage Gemini Image Editing Pipeline with Supabase Functions" provided is invaluable for the AI/Orchestration parts. It uses Deno/Supabase functions, so I'll need to adapt this to Next.js Server Actions / API Routes, keeping the core logic. The use of `@google/genai` SDK is consistent.
+
+Final check on output format: Markdown, specific section and step structure.
+
+Let's start building.
+</brainstorming>
+
+# Implementation Plan
+
+## Phase 0: Initial Setup & Configuration
+
+- [ ] Step 0.1: Update Environment Variables
+  - **Task**: Update the `.env.example` file with new and modified environment variables required for AisarEdit. Remove unused ones like `OPENAI_API_KEY` and `SUPABASE_BUCKET_RECEIPTS`.
+  - **Files**:
+    - `.env.example`: Add `GEMINI_API_KEY`, `NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB`, `AISEREDIT_ORIGINAL_IMAGES_BUCKET`, `AISEREDIT_EDITED_IMAGES_BUCKET`, `AISEREDIT_MAX_DAILY_EDITS`, `CRON_SECRET`. Remove `OPENAI_API_KEY`, `SUPABASE_BUCKET_RECEIPTS`.
+  - **Step Dependencies**: None
+  - **User Instructions**:
+    1.  Create a `.env.local` file by copying `.env.example`.
+    2.  Fill in the actual values for all variables in `.env.local`, especially `GEMINI_API_KEY`, Supabase details, and Clerk keys.
+    3.  Generate a strong secret for `CRON_SECRET`.
+
+- [ ] Step 0.2: Global Styles, RTL Configuration, and Tajawal Font Setup
+  - **Task**: Configure the application for Arabic language (RTL) support. Set Tajawal as the default font.
+  - **Files**:
+    - `app/layout.tsx`: Set `dir="rtl"` on the `<html>` tag. Import and apply the `font-tajawal` class to the `<body>` element.
+    - `app/globals.css`: Add `@font-face` rules for Tajawal (Regular 400, SemiBold 600, Bold 700). Ensure Tailwind CSS is configured for RTL (this might involve checking `tailwind.config.ts` for RTL plugins or relying on logical properties). Update body font-family.
+    - `public/fonts/`: Add Tajawal font files (e.g., `Tajawal-Regular.ttf`, `Tajawal-SemiBold.ttf`, `Tajawal-Bold.ttf`).
+  - **Step Dependencies**: Step 0.1
+  - **User Instructions**:
+    1.  Download the Tajawal font files (Regular, SemiBold, Bold weights) and place them in the `public/fonts/` directory.
+    2.  Ensure your Tailwind CSS setup correctly handles RTL. Tailwind CSS v3.3+ has improved support for logical properties which should be preferred.
+
+- [ ] Step 0.3: Application Constants
+  - **Task**: Create a file for application-wide constants.
+  - **Files**:
+    - `lib/constants.ts`: Create this file. Define `MAX_IMAGE_UPLOAD_MB` (e.g., 5), `ALLOWED_IMAGE_FORMATS` (e.g., `['image/jpeg', 'image/png', 'image/webp']`), and `MAX_DAILY_EDITS` (e.g., 5). Export these constants. These values should correspond to environment variables where appropriate for configurability (e.g. reading from `process.env.NEXT_PUBLIC_MAX_IMAGE_UPLOAD_MB`).
+  - **Step Dependencies**: Step 0.1
+  - **User Instructions**: None
+
+- [ ] Step 0.4: Basic Type Definitions
+  - **Task**: Define initial shared TypeScript types, particularly `ActionState`.
+  - **Files**:
+    - `types/index.ts`: Export new types.
+    - `types/server-action-types.ts`: Ensure this file matches the provided `ActionState<T>` interface from project rules (it seems to be already present in the starter, verify and ensure it is named `action-state-types.ts` if strictly following example, or `server-action-types.ts` as in starter).
+    - `types/image-processing-types.ts`: Create this file. Define `ImageMimeType` (e.g., `'image/jpeg' | 'image/png' | 'image/webp'`).
+  - **Step Dependencies**: None
+  - **User Instructions**: Ensure the `ActionState` type in `types/server-action-types.ts` (or `types/action-state-types.ts`) is correctly defined as per project rules.
+
+## Phase 1: Database Schema
+
+- [ ] Step 1.1: Define Database Enums
+  - **Task**: Create Drizzle enums for `edit_status` and `processing_stage`.
+  - **Files**:
+    - `db/schema/enums.ts`: Create this new file. Define `editStatusEnum` ('pending', 'processing', 'completed', 'failed') and `processingStageEnum` ('pending_describe', 'describing_image', 'pending_translate', 'translating_prompt', 'pending_edit', 'editing_image', 'uploading_result', 'completed', 'failed').
+    - `db/schema/index.ts`: Export enums from `enums.ts`.
+  - **Step Dependencies**: Step 0.4
+  - **User Instructions**: None
+
+- [ ] Step 1.2: Update `profiles` Table Schema
+  - **Task**: Add new fields to the existing `profilesTable` for usage tracking and link to Clerk `userId` and `email`.
+  - **Files**:
+    - `db/schema/profiles-schema.ts`:
+        - Add `email` (TEXT, from Clerk user, can be nullable or not based on requirements, ensure it can be unique if needed).
+        - Add `daily_edit_count` (INTEGER, NOT NULL, DEFAULT 0).
+        - Add `last_edit_date` (TIMESTAMP WITH TIME ZONE, NULLABLE).
+        - Ensure `userId` is `text("user_id").primaryKey().notNull()`.
+        - Ensure `membership` uses `membershipEnum` from `db/schema/enums.ts` (or `profiles-schema.ts` if defined there as in starter).
+        - Ensure `createdAt` and `updatedAt` exist as per rules.
+  - **Step Dependencies**: Step 1.1 (if membershipEnum is moved to `enums.ts`, otherwise none for this specific change if enums.ts is not created yet).
+  - **User Instructions**: None. The starter already has `membershipEnum` in `profiles-schema.ts`. If you create a central `enums.ts`, ensure references are updated.
+
+- [ ] Step 1.3: Create `edits` Table Schema
+  - **Task**: Define the schema for the `edits` table to store image editing history.
+  - **Files**:
+    - `db/schema/edits-schema.ts`: Create this file.
+        - `id` (UUID, PK, DEFAULT `uuid_generate_v4()`)
+        - `user_id` (TEXT, NOT NULL, FK to `profilesTable.userId` ON DELETE CASCADE)
+        - `job_id` (UUID, NULLABLE, UNIQUE, FK to `image_processing_jobsTable.id` ON DELETE SET NULL) - *Deferred FK constraint until `image_processing_jobsTable` is created, or add as a later step if Drizzle requires ordered creation.*
+        - `original_image_url` (TEXT, NOT NULL)
+        - `original_image_filename` (TEXT, NOT NULL)
+        - `edited_image_url` (TEXT, NULLABLE)
+        - `edited_image_filename` (TEXT, NULLABLE)
+        - `user_prompt_original` (TEXT, NOT NULL)
+        - `user_prompt_translated` (TEXT, NULLABLE)
+        - `image_description_ai` (TEXT, NULLABLE)
+        - `status` (edit_status_enum from `enums.ts`, NOT NULL, DEFAULT 'pending')
+        - `error_message` (TEXT, NULLABLE)
+        - `created_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`)
+        - `updated_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`, with `$onUpdate(() => new Date())`)
+        - Export `InsertEdit` and `SelectEdit` types.
+    - `db/schema/index.ts`: Export from `edits-schema.ts`.
+  - **Step Dependencies**: Step 1.1, Step 1.2 (for `profilesTable.userId` FK)
+  - **User Instructions**: The FK to `image_processing_jobsTable` might need to be added after that table's schema is defined, or Drizzle might handle forward declarations.
+
+- [ ] Step 1.4: Create `image_processing_jobs` Table Schema
+  - **Task**: Define the schema for the `image_processing_jobs` table to manage asynchronous editing tasks.
+  - **Files**:
+    - `db/schema/image-processing-jobs-schema.ts`: Create this file.
+        - `id` (UUID, PK, DEFAULT `uuid_generate_v4()`)
+        - `edit_id` (UUID, NOT NULL, UNIQUE, FK to `editsTable.id` ON DELETE CASCADE)
+        - `user_id` (TEXT, NOT NULL, FK to `profilesTable.userId` ON DELETE CASCADE)
+        - `current_stage` (processing_stage_enum from `enums.ts`, NOT NULL, DEFAULT 'pending_describe')
+        - `stage_payload` (JSONB, NULLABLE) - with structure as defined in technical spec.
+        - `retry_count` (INTEGER, NOT NULL, DEFAULT 0)
+        - `last_error` (TEXT, NULLABLE)
+        - `created_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`)
+        - `updated_at` (TIMESTAMP WITH TIME ZONE, NOT NULL, DEFAULT `now()`, with `$onUpdate(() => new Date())`)
+        - Export `InsertImageProcessingJob` and `SelectImageProcessingJob` types.
+    - `db/schema/index.ts`: Export from `image-processing-jobs-schema.ts`.
+    - `db/schema/edits-schema.ts`: If `job_id` FK was deferred, add it here referencing `image_processing_jobsTable.id`.
+  - **Step Dependencies**: Step 1.1, Step 1.2 (for `profilesTable.userId` FK), Step 1.3 (for `editsTable.id` FK).
+  - **User Instructions**: None.
+
+- [ ] Step 1.5: Update `db.ts`
+  - **Task**: Add the new table schemas to the Drizzle client instance.
+  - **Files**:
+    - `db/db.ts`: Import `editsTable` and `imageProcessingJobsTable`. Add them to the `schema` object.
+  - **Step Dependencies**: Step 1.3, Step 1.4
+  - **User Instructions**: None.
+
+## Phase 2: Core Backend Actions & APIs
+
+- [ ] Step 2.1: Supabase Storage Actions for Images
+  - **Task**: Create server actions for uploading images to Supabase Storage and getting public URLs.
+  - **Files**:
+    - `actions/storage/image-storage-actions.ts`: Create this file.
+        - Implement `uploadImageToSupabaseStorageAction(userId: string, file: File, type: 'original' | 'edited', originalFileName: string): Promise<ActionState<{ publicUrl: string; path: string; filename: string }>>`.
+            - Use environment variables for bucket names (`AISEREDIT_ORIGINAL_IMAGES_BUCKET`, `AISEREDIT_EDITED_IMAGES_BUCKET`).
+            - File path structure: `{bucketName}/{userId}/{timestamp}_{originalFileName}`.
+            - Validate file type and size using constants from `lib/constants.ts`. Use `file.type` and `file.size`.
+            - Set `contentType: file.type` and `upsert: false`.
+        - Implement `getImagePublicUrlFromPathAction(path: string): Promise<ActionState<{ publicUrl: string }>>`.
+    - `types/index.ts`: Export any new types from storage actions if necessary.
+    - `types/storage-action-types.ts` (if specific types are needed, else use generic ActionState).
+  - **Step Dependencies**: Step 0.1, Step 0.3, Step 0.4
+  - **User Instructions**:
+    1.  In your Supabase project, create two storage buckets:
+        *   `aisyaredit-original-images` (or the name set in your `.env.local`). This bucket can be private.
+        *   `aisyaredit-edited-images` (or the name set in your `.env.local`). This bucket should ideally be public for easy display of results, or you will need to generate signed URLs for every access.
+    2.  (Later RLS policies will secure these further - see Phase 10).
+
+- [ ] Step 2.2: Gemini API Client Setup & Core AI Actions
+  - **Task**: Set up the Gemini API client and create server actions for the three AI processing stages: describe image, detect/translate text, and edit image.
+  - **Files**:
+    - `lib/gemini.ts`: Create this file (optional, if client setup is complex or shared). Initialize `GoogleGenerativeAI` with `process.env.GEMINI_API_KEY`. Export the client instance.
+    - `actions/ai/gemini-actions.ts`: Create this file.
+        - Import Gemini client from `lib/gemini.ts` or initialize here.
+        - `describeImageWithGeminiAction(base64Image: string, mimeType: string): Promise<ActionState<{ description: string }>>`
+            - Uses Gemini Vision model (e.g., `gemini-pro-vision` or a newer equivalent, ensure it matches spec like "gemini-2.0-flash-preview-image-generation" if more specific).
+            - Input: base64 image data and its mimeType.
+            - Output: Text description.
+        - `detectLanguageAndTranslateWithGeminiAction(text: string): Promise<ActionState<{ detectedLanguage: string; translatedText: string | null }>>`
+            - Uses Gemini text model.
+            - Input: User prompt.
+            - Output: Detected language (e.g., 'ar', 'en') and English translation if original was Arabic. Implement fallback if language detection is uncertain (e.g. always try to translate if not 'en').
+        - `editImageWithGeminiAction(base64Image: string, mimeType: string, aiDescription: string, userPromptForEditing: string): Promise<ActionState<{ editedImageBase64: string }>>`
+            - Uses Gemini image generation/editing model (e.g., `gemini-pro-vision` or a newer equivalent for image-to-image like "gemini-2.0-flash-preview-image-generation").
+            - Input: Original base64 image data, its mimeType, AI-generated image description, and the (translated) user prompt.
+            - Output: Edited image as base64 string.
+    - `types/index.ts`: Export any new types.
+    - `types/gemini-types.ts`: Create if specific complex request/response types for Gemini actions are needed beyond basic `ActionState` payloads.
+  - **Step Dependencies**: Step 0.1, Step 0.4
+  - **User Instructions**: Ensure your `GEMINI_API_KEY` has access to the required Gemini models. Refer to Google AI documentation for model names and capabilities. The technical specification implies specific model usage (`gemini-2.0-flash-preview-image-generation` for vision/edit, `gemini-2.0-flash-preview` for translate).
+
+- [ ] Step 2.3: Database Actions for `profiles`
+  - **Task**: Implement/Update server actions for managing `profiles` table, focusing on profile creation/retrieval and usage tracking.
+  - **Files**:
+    - `actions/db/profiles-actions.ts`:
+        - `getProfileByUserIdAction(userId: string): Promise<ActionState<SelectProfile>>` (Likely exists, verify).
+        - `createOrUpdateProfileOnLoginAction(data: { userId: string; email?: string | null }): Promise<ActionState<SelectProfile>>`: Creates a profile if not exists, or updates email if it changed. Initializes `daily_edit_count = 0`, `last_edit_date = new Date().toISOString()`.
+        - `checkAndIncrementUsageAction(userId: string): Promise<ActionState<{ limitReached: boolean; remainingEdits: number }>>`:
+            - Gets profile.
+            - If `last_edit_date` is not today, resets `daily_edit_count` to 0 and `last_edit_date` to today.
+            - If `daily_edit_count >= MAX_DAILY_EDITS` (from `lib/constants.ts`), returns `limitReached: true`.
+            - Otherwise, increments `daily_edit_count`, updates `last_edit_date`, saves profile, and returns `limitReached: false` and remaining edits.
+            - Ensure date comparisons handle timezones correctly (ISO strings and DB TIMESTAMP WITH TIME ZONE should help).
+  - **Step Dependencies**: Step 1.2, Step 0.3
+  - **User Instructions**: None.
+
+- [ ] Step 2.4: Database Actions for `edits`
+  - **Task**: Create CRUD server actions for the `edits` table.
+  - **Files**:
+    - `actions/db/edits-actions.ts`: Create this file.
+        - `createEditAction(data: InsertEdit): Promise<ActionState<SelectEdit>>`
+        - `getEditByIdAction(editId: string, userId: string): Promise<ActionState<SelectEdit | null>>` (Ensure user owns the edit)
+        - `updateEditAction(editId: string, userId: string, data: Partial<Omit<InsertEdit, 'id' | 'userId' | 'created_at'>>): Promise<ActionState<SelectEdit>>` (Ensure user owns the edit)
+        - `getEditsByUserIdAction(userId: string, limit?: number, offset?: number): Promise<ActionState<SelectEdit[]>>` (For history page, with pagination)
+  - **Step Dependencies**: Step 1.3, Step 0.4
+  - **User Instructions**: None.
+
+- [ ] Step 2.5: Database Actions for `image_processing_jobs`
+  - **Task**: Create server actions for managing `image_processing_jobs` table.
+  - **Files**:
+    - `actions/db/image-processing-jobs-actions.ts`: Create this file.
+        - `createImageProcessingJobAction(data: InsertImageProcessingJob): Promise<ActionState<SelectImageProcessingJob>>`
+        - `getImageProcessingJobByIdAction(jobId: string, userId: string): Promise<ActionState<SelectImageProcessingJob | null>>` (Ensure user owns the job)
+        - `updateImageProcessingJobAction(jobId: string, data: Partial<Omit<InsertImageProcessingJob, 'id' | 'userId' | 'edit_id' | 'created_at'>>): Promise<ActionState<SelectImageProcessingJob>>` (For worker to update status, payload, errors)
+        - `getPendingJobsForWorkerAction(limit: number): Promise<ActionState<SelectImageProcessingJob[]>>` (Fetches jobs that are not 'completed' or 'failed' max retries, ordered by `created_at`)
+  - **Step Dependencies**: Step 1.4, Step 0.4
+  - **User Instructions**: None.
+
+## Phase 3: Orchestration Logic & User Authentication
+
+- [ ] Step 3.1: Image Orchestration Server Action (`startImageEditProcessAction`)
+  - **Task**: Create the main server action that clients call to initiate an image editing process.
+  - **Files**:
+    - `actions/image-orchestration-actions.ts`: Create this file.
+        - `startImageEditProcessAction(originalImagePublicUrl: string, originalImageFilename: string, userPrompt: string): Promise<ActionState<{ jobId: string }>>`
+            - Authenticate user with `auth()` from Clerk. If no `userId`, return error.
+            - Call `checkAndIncrementUsageAction`. If limit reached, return error.
+            - Create an `edits` record (status `pending`, `original_image_url`, `original_image_filename`, `user_prompt_original`, `user_id`). Get `editId`.
+            - Create an `image_processing_jobs` record (`edit_id`, `user_id`, `current_stage = 'pending_describe'`, `stage_payload = { originalImageUrl, originalImageFilename, userPrompt }`). Get `jobId`.
+            - Update the `edits` record with the `job_id`.
+            - Return `{ jobId }`.
+  - **Step Dependencies**: Step 2.3, Step 2.4, Step 2.5, Step 1.2, Step 1.3, Step 1.4
+  - **User Instructions**: None.
+
+- [ ] Step 3.2: Clerk Authentication Setup & Middleware
+  - **Task**: Configure Clerk authentication, update middleware to protect authenticated routes, and set up user profile synchronization on login/signup.
+  - **Files**:
+    - `app/layout.tsx`: Wrap with `<ClerkProvider>`. Implement logic to call `createOrUpdateProfileOnLoginAction` after user authentication state is available (e.g., using `auth()` and checking if profile exists).
+    - `middleware.ts`: Update `createRouteMatcher` for `isProtectedRoute` to include `/app/(.*)` or specific routes like `/dashboard`, `/edit`, `/history`. Redirect unauthenticated users to `/login`.
+    - `app/(auth)/login/[[...login]]/page.tsx`: Ensure `forceRedirectUrl` is set to `/dashboard` or a relevant authenticated page.
+    - `app/(auth)/signup/[[...signup]]/page.tsx`: Ensure `forceRedirectUrl` is set to `/dashboard`.
+  - **Step Dependencies**: Step 2.3
+  - **User Instructions**:
+    1.  Ensure Clerk environment variables (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, etc.) are correctly set in `.env.local`.
+    2.  Configure your Clerk application dashboard (e.g., allowed callback URLs if necessary).
+
+- [ ] Step 3.3: Job Status Polling API Route
+  - **Task**: Create an API route for the client to poll the status of an image processing job.
+  - **Files**:
+    - `app/api/jobs/[jobId]/status/route.ts`: Create this file.
+        - Implement `GET(request: NextRequest, { params }: { params: { jobId: string } })`.
+        - Authenticate user with `auth()` from Clerk.
+        - Extract `jobId` from `params`.
+        - Call `ImageProcessingJobsActions.getImageProcessingJobByIdAction(jobId, userId)`.
+        - Return relevant job data: `{ status: job.current_stage, editedImageUrl: job.stage_payload.editedImageUrl, errorMessage: job.last_error, userPrompt: job.stage_payload.userPrompt, originalImageUrl: job.stage_payload.originalImageUrl, aiImageDescription: job.stage_payload.aiImageDescription }`.
+  - **Step Dependencies**: Step 2.5, Step 3.2
+  - **User Instructions**: None.
+
+- [ ] Step 3.4: Orchestration Worker API Route
+  - **Task**: Create the cron-triggered API route that processes image editing jobs in stages.
+  - **Files**:
+    - `app/api/orchestrator/worker/route.ts`: Create this file.
+        - Implement `POST(request: NextRequest)`. (POST is better for cron if it can send a body or for manual trigger, GET is also common for Vercel Crons).
+        - Secure the endpoint: Check for `request.headers.get('authorization') === \`Bearer ${process.env.CRON_SECRET}\``.
+        - Call `ImageProcessingJobsActions.getPendingJobsForWorkerAction()`.
+        - For each job:
+            - **Stage `pending_describe`**:
+                - Fetch original image from `job.stage_payload.originalImageUrl`. Convert to base64.
+                - Call `GeminiActions.describeImageWithGeminiAction(base64Image, mimeType)`.
+                - On success, update `job.stage_payload.aiImageDescription`, `job.current_stage = 'pending_translate'`.
+                - On failure, update `job.last_error`, increment `job.retry_count`. If max retries, set `job.current_stage = 'failed'`.
+                - Call `updateImageProcessingJobAction`.
+            - **Stage `pending_translate`**:
+                - Call `GeminiActions.detectLanguageAndTranslateWithGeminiAction(job.stage_payload.userPrompt)`.
+                - On success, update `job.stage_payload.promptLanguage`, `job.stage_payload.translatedUserPrompt`, `job.current_stage = 'pending_edit'`.
+                - On failure, handle as above.
+                - Call `updateImageProcessingJobAction`.
+            - **Stage `pending_edit`**:
+                - Fetch original image from `job.stage_payload.originalImageUrl`. Convert to base64.
+                - Call `GeminiActions.editImageWithGeminiAction(base64Image, mimeType, job.stage_payload.aiImageDescription, job.stage_payload.translatedUserPrompt || job.stage_payload.userPrompt)`.
+                - On success, convert returned base64 edited image to a `Blob` or `Buffer`.
+                - Call `ImageStorageActions.uploadImageToSupabaseStorageAction(job.user_id, editedImageFile, 'edited', job.stage_payload.originalImageFilename + '_edited')`.
+                - Update `job.stage_payload.editedImageUrl` (with the public URL), `job.stage_payload.editedImageFilename`, `job.current_stage = 'completed'`.
+                - Update corresponding `edits` record: `status = 'completed'`, `edited_image_url`, `edited_image_filename`, `user_prompt_translated`, `image_description_ai`.
+                - On failure (Gemini or upload), handle as above.
+                - Call `updateImageProcessingJobAction` and `updateEditAction`.
+            - **Error/Retry Handling**: Implement retry logic (e.g., max 3 retries). If job fails permanently, update `edits` record status to `failed` and store `job.last_error` in `edits.error_message`.
+  - **Step Dependencies**: Step 0.1, Step 2.1, Step 2.2, Step 2.4, Step 2.5
+  - **User Instructions**:
+    1.  Configure a cron job on Vercel (or your deployment platform) to call this `/api/orchestrator/worker` endpoint at a regular interval (e.g., every minute or every 5 minutes).
+        Example for `vercel.json`:
+        ```json
+        {
+          "crons": [
+            {
+              "path": "/api/orchestrator/worker",
+              "schedule": "*/1 * * * *" // Every minute
+            }
+          ]
+        }
+        ```
+    2. Ensure the `CRON_SECRET` environment variable is set on Vercel. The cron job should be configured to send this secret in the Authorization header as a Bearer token.
+
+## Phase 4: UI Layouts & Shared Components
+
+- [ ] Step 4.1: Authenticated App Layout (`(app)/layout.tsx`) and Sidebar
+  - **Task**: Create the main layout for authenticated sections of the app, including a sidebar for navigation.
+  - **Files**:
+    - `app/(app)/layout.tsx`: Create this Server Component.
+        - Include Clerk's `<UserButton />` and theme switcher.
+        - Structure: A flex container with `Sidebar` and a main content area.
+        - Ensure it's protected by middleware (covered in Step 3.2).
+    - `components/shared/sidebar.tsx`: Create this Client Component (or Server Component if no client-side interaction needed for links).
+        - Links to Dashboard (`/dashboard`), Edit (`/edit`), History (`/history`). Use `lucide-react` icons.
+        - Style with Shadcn components (e.g., `Button` with `variant="ghost"` for nav links).
+        - Implement active link highlighting.
+        - All text in Arabic.
+    - `app/(app)/dashboard/page.tsx`: Create a placeholder page for now.
+    - `app/(app)/edit/page.tsx`: Create a placeholder page.
+    - `app/(app)/history/page.tsx`: Create a placeholder page.
+  - **Step Dependencies**: Step 0.2, Step 3.2
+  - **User Instructions**: Ensure `lucide-react` is installed (should be in starter template).
+
+- [ ] Step 4.2: Notification System
+  - **Task**: Implement a shared notification system using Shadcn `Toast`.
+  - **Files**:
+    - `components/ui/toast.tsx` & `components/ui/use-toast.ts`: These should exist from Shadcn.
+    - `components/shared/notification-toast.tsx` (if creating a custom wrapper, otherwise directly use `useToast`).
+    - `app/layout.tsx`: Ensure `<Toaster />` component is included (likely already there from starter template for `useToast`).
+    - `lib/hooks/use-toast.ts`: This custom hook is in the starter. It will be used by client components to display toasts.
+  - **Step Dependencies**: Starter template's Shadcn UI setup.
+  - **User Instructions**: Familiarize with how `useToast` hook from `lib/hooks/use-toast.ts` (or Shadcn's `useToast` directly) is used to trigger toasts.
+
+## Phase 5: Feature Implementation - Landing Page & Dashboard
+
+- [ ] Step 5.1: Landing Page (`(marketing)/page.tsx`)
+  - **Task**: Adapt the existing marketing home page to AisarEdit. Content should be in Arabic.
+  - **Files**:
+    - `app/(marketing)/page.tsx`: Modify this Server Component.
+        - Update hero section text, features, and calls to action to reflect AisarEdit.
+        - All text in Arabic. Apply typography rules.
+    - `components/landing/hero.tsx`: Modify if needed.
+    - `components/landing/header.tsx`: Modify site name to "أَيْسَر (AisarEdit)". Update nav links if necessary (e.g., remove "Dashboard" if only for authenticated users).
+    - `components/landing/footer.tsx`: Update company name and year.
+  - **Step Dependencies**: Step 0.2
+  - **User Instructions**: Ensure all marketing copy is accurately translated to Arabic and fits the design.
+
+- [ ] Step 5.2: Dashboard Page (`(app)/dashboard/page.tsx`)
+  - **Task**: Implement the user dashboard page.
+  - **Files**:
+    - `app/(app)/dashboard/page.tsx`: Develop this Server Component.
+        - Display a welcome message in Arabic (e.g., "مرحباً بك في أَيْسَر").
+        - Fetch user's profile using `getProfileByUserIdAction` (or a more specific action like `getProfileForUsageCheckAction` from Step 2.3) to display remaining edits for the day. Text: "لديك X تعديلات متبقية اليوم".
+        - Provide quick links/buttons (styled with Shadcn) to "بدء تعديل جديد" (`/edit`) and "عرض سجل التعديلات" (`/history`).
+        - Apply typography and visual styles.
+  - **Step Dependencies**: Step 2.3, Step 4.1
+  - **User Instructions**: None.
+
+## Phase 6: Feature Implementation - Image Editing
+
+- [ ] Step 6.1: Edit Page Structure and Basic Form (`(app)/edit/page.tsx`, `edit-form.tsx`)
+  - **Task**: Create the main structure for the Edit page and the basic form elements (text prompt input and generate button).
+  - **Files**:
+    - `app/(app)/edit/page.tsx`: Server Component.
+        - Add main heading: "إنشاء صورتك المعدلة" (h1, styled as per spec).
+        - Add introductory paragraph: "قم بتحميل صورتك، واختر النمط المناسب، ودع الذكاء الاصطناعي يقوم بالسحر!" (p, styled).
+        - Render the `EditForm` client component.
+    - `app/(app)/edit/_components/edit-form.tsx`: Create this Client Component.
+        - Section Heading (h2): "١. تحميل الصورة" (styled).
+        - (Placeholder for ImageUploader)
+        - Section Heading (h2): "٢. وصف التعديل" (styled).
+        - Add Shadcn `Textarea` for user prompt input (supporting Arabic/English). State-managed. Placeholder: "صف التعديلات التي تريدها على الصورة... (مثال: اجعل السماء زرقاء، أضف قطة على الكرسي)".
+        - Add Shadcn `Button` "تعديل الصورة" (Generate). Initially, it can log form data to console. Add loading state (e.g., disable and show spinner).
+        - Apply typography and visual styles (borders, shadows, rounded corners as per spec).
+  - **Step Dependencies**: Step 0.2, Step 4.1
+  - **User Instructions**: None.
+
+- [ ] Step 6.2: Image Uploader Component (`image-uploader.tsx`)
+  - **Task**: Implement the client-side image uploader component with preview and validation.
+  - **Files**:
+    - `app/(app)/edit/_components/image-uploader.tsx`: Create this Client Component.
+        - Use Shadcn `Input type="file"` or build a custom drag-and-drop area (styled with `border-dashed`).
+        - Accept `image/jpeg, image/png, image/webp` (from `lib/constants.ts`).
+        - Client-side validation for file type and size (`MAX_IMAGE_UPLOAD_MB` from `lib/constants.ts`). Show errors using `text-destructive`.
+        - Display image preview after selection.
+        - On file selection, call a prop function `onFileSelect: (file: File | null) => void`.
+    - `app/(app)/edit/_components/edit-form.tsx`:
+        - Import and use `ImageUploader`.
+        - Manage selected file in state using `onFileSelect` callback.
+  - **Step Dependencies**: Step 0.3, Step 6.1
+  - **User Instructions**: None.
+
+- [ ] Step 6.3: Integrate Image Upload and Orchestration Start
+  - **Task**: Connect the "Generate" button to upload the image and start the backend editing process. Implement client-side polling logic.
+  - **Files**:
+    - `app/(app)/edit/_components/edit-form.tsx`:
+        - On "Generate" button click:
+            - Set loading state.
+            - Call `uploadImageToSupabaseStorageAction` (from `actions/storage/image-storage-actions.ts`) with the selected file, user ID, type 'original', and original filename.
+            - If upload successful, call `startImageEditProcessAction` (from `actions/image-orchestration-actions.ts`) with the returned `publicUrl`, `filename`, and the user prompt.
+            - Store the returned `jobId` in state.
+            - Implement `useEffect` to poll `GET /api/jobs/[jobId]/status` when `jobId` is set.
+                - Use `fetch` for polling.
+                - Update component state with job status (e.g., `processing_stage`, `editedImageUrl`, `error_message`).
+            - Disable form/button during processing.
+            - Handle `ActionState` responses (success/error messages via toast).
+  - **Step Dependencies**: Step 2.1, Step 3.1, Step 3.3, Step 6.2, Step 4.2
+  - **User Instructions**: None.
+
+- [ ] Step 6.4: Display Edited Image and Download Option
+  - **Task**: Display the processed image and enable download once the job is complete. Handle error states from polling.
+  - **Files**:
+    - `app/(app)/edit/_components/edit-form.tsx`:
+        - Based on polled job status:
+            - If `status === 'completed'` and `editedImageUrl` is available:
+                - Display the edited image using an `<img>` tag. Section Heading (h2): "٣. صورتك المعدلة" (styled).
+                - Show a Shadcn `Button` "تحميل الصورة" that links to `editedImageUrl` with a `download` attribute.
+            - If `status === 'failed'`:
+                - Display `errorMessage` from polling response (e.g., "فشل تعديل الصورة: " + error). Use `text-destructive`.
+            - If processing, show appropriate messages (e.g., "جاري تحليل الصورة...", "جاري الترجمة...", "جاري تعديل الصورة...").
+        - Clear results/error when a new image is uploaded or prompt changes significantly.
+        - Handle daily limit reached notification based on `startImageEditProcessAction` response.
+  - **Step Dependencies**: Step 6.3
+  - **User Instructions**: None.
+
+## Phase 7: Feature Implementation - History Page
+
+- [ ] Step 7.1: History Page Structure and Data Fetching (`(app)/history/page.tsx`)
+  - **Task**: Create the History page to display a list of past edits.
+  - **Files**:
+    - `app/(app)/history/page.tsx`: Develop this Server Component.
+        - Add main heading: "سجل التعديلات" (h1, styled).
+        - Fetch user's edit history using `EditsActions.getEditsByUserIdAction(userId)`.
+        - Wrap data fetching in `<Suspense>` with a skeleton loader.
+        - If no history, display message: "لم تقم بأي تعديلات بعد."
+        - If error fetching, display error message.
+        - Pass fetched edits to a client component `HistoryList` (or render server-side if no client interaction needed for the list itself).
+  - **Step Dependencies**: Step 2.4, Step 4.1
+  - **User Instructions**: Create a simple `HistoryListSkeleton` component.
+
+- [ ] Step 7.2: History Item Component and List (`history-list.tsx`, `history-item.tsx`)
+  - **Task**: Create components to display individual history items and the list of items.
+  - **Files**:
+    - `app/(app)/history/_components/history-list.tsx`: Create this component (Client or Server).
+        - Props: `edits: SelectEdit[]`.
+        - Renders a grid or list of `HistoryItem` components.
+    - `app/(app)/history/_components/history-item.tsx`: Create this component (Client or Server).
+        - Props: `edit: SelectEdit`.
+        - Displays:
+            - Thumbnail of original image (`edit.original_image_url`).
+            - Thumbnail of edited image (`edit.edited_image_url`) if `status === 'completed'`.
+            - User prompt (`edit.user_prompt_original`).
+            - Timestamp (`edit.created_at`, formatted).
+            - Status (e.g., "مكتمل", "فشل").
+            - Shadcn `Button` "تحميل" if `status === 'completed'`, linking to `edit.edited_image_url` with `download` attribute.
+        - Apply card styling (e.g., Shadcn `Card`), borders, shadows, rounded corners.
+  - **Step Dependencies**: Step 7.1
+  - **User Instructions**: None.
+
+## Phase 8: Analytics & Final Touches
+
+- [ ] Step 8.1: Stub Analytics Implementation
+  - **Task**: Create a stub analytics tracking function and identify key events for future integration.
+  - **Files**:
+    - `lib/analytics.ts`: Create this file.
+        - Implement `trackEvent(eventName: string, properties?: Record<string, any>)` function that logs to console in `development` or is a no-op.
+        - Call this `trackEvent` at key points:
+            - User signup/login (in `createOrUpdateProfileOnLoginAction` or `app/layout.tsx` sync logic).
+            - `startImageEditProcessAction` called (`edit_submitted`).
+            - Job completion (`edit_completed`, `edit_failed` in worker or polled result handling).
+            - Daily limit reached (in `checkAndIncrementUsageAction` or client-side notification).
+  - **Step Dependencies**: Step 3.1, Step 2.3
+  - **User Instructions**: This is a stub. Full analytics integration (e.g. PostHog) would require further steps.
+
+- [ ] Step 8.2: Privacy Policy and Terms of Service Pages
+  - **Task**: Create placeholder pages for Privacy Policy and Terms of Service.
+  - **Files**:
+    - `app/(marketing)/privacy/page.tsx`: Create this Server Component with placeholder Arabic text.
+    - `app/(marketing)/terms/page.tsx`: Create this Server Component with placeholder Arabic text.
+    - `components/landing/footer.tsx`: Add links to these pages.
+  - **Step Dependencies**: Step 5.1
+  - **User Instructions**: Replace placeholder text with actual legal documents when available.
+
+## Phase 9: Security (RLS Policies)
+
+- [ ] Step 9.1: Implement Supabase RLS Policies
+  - **Task**: Define and apply Row Level Security (RLS) policies for Supabase tables and Storage buckets.
+  - **Files**: None directly in the codebase for this step. The output is SQL scripts.
+  - **Step Dependencies**: Step 1.2, Step 1.3, Step 1.4, Step 2.1
+  - **User Instructions**:
+    1.  Navigate to the Supabase SQL Editor in your project dashboard.
+    2.  Enable RLS for the `profiles`, `edits`, and `image_processing_jobs` tables if not already enabled.
+        ```sql
+        ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.edits ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE public.image_processing_jobs ENABLE ROW LEVEL SECURITY;
+        ```
+    3.  Apply the following RLS policies:
+        **Profiles Table:**
+        ```sql
+        CREATE POLICY "Users can read their own profile"
+        ON public.profiles FOR SELECT
+        USING (auth.uid()::text = user_id);
+
+        CREATE POLICY "Users can update their own profile"
+        ON public.profiles FOR UPDATE
+        USING (auth.uid()::text = user_id)
+        WITH CHECK (auth.uid()::text = user_id);
+
+        -- Allow backend to create profiles via service_role or specific trusted roles
+        -- For initial creation on signup, service_role is fine.
+        -- If createOrUpdateProfileOnLoginAction runs as the user, an INSERT policy is needed:
+        CREATE POLICY "Users can insert their own profile"
+        ON public.profiles FOR INSERT
+        WITH CHECK (auth.uid()::text = user_id);
+        ```
+        **Edits Table:**
+        ```sql
+        CREATE POLICY "Users can CRUD their own edits"
+        ON public.edits FOR ALL
+        USING (auth.uid()::text = user_id);
+        ```
+        **Image Processing Jobs Table:**
+        ```sql
+        CREATE POLICY "Users can read their own image processing jobs"
+        ON public.image_processing_jobs FOR SELECT
+        USING (auth.uid()::text = user_id);
+
+        -- Allow backend (worker) to create and update jobs using service_role.
+        -- If image_orchestration_actions creates jobs as the user:
+        CREATE POLICY "Users can insert their own image processing jobs"
+        ON public.image_processing_jobs FOR INSERT
+        WITH CHECK (auth.uid()::text = user_id);
+        ```
+        **Supabase Storage Buckets (`aisyaredit-original-images`, `aisyaredit-edited-images`):**
+        Bucket names here must match your `.env.local` and bucket creation step.
+        Assume file path structure is `userId/filename`.
+        ```sql
+        -- For 'aisyaredit-original-images' bucket (private uploads by user)
+        CREATE POLICY "Users can upload to their own folder in original_images"
+        ON storage.objects FOR INSERT TO authenticated
+        WITH CHECK (bucket_id = 'aisyaredit-original-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+        CREATE POLICY "Users can read their own files from original_images"
+        ON storage.objects FOR SELECT TO authenticated
+        USING (bucket_id = 'aisyaredit-original-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+        -- For 'aisyaredit-edited-images' bucket
+        -- Option 1: Public read (if bucket is set to public in Supabase UI) - No specific RLS SELECT policy needed for public access.
+        -- Option 2: Authenticated read (if bucket is private and URLs are generated or access is direct)
+        CREATE POLICY "Users can read their own edited images"
+        ON storage.objects FOR SELECT TO authenticated
+        USING (bucket_id = 'aisyaredit-edited-images' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+        -- Allow worker (using service_role key) to upload edited images. Service role bypasses RLS.
+        -- If uploads are done by user context, an INSERT policy like the one for original_images would be needed for edited_images.
+        ```
+    4.  Test these policies thoroughly by impersonating users in the Supabase dashboard or through application testing.
+
+## Phase 10: Testing (Initial Scaffolding - Further tests would be subsequent iterations)
+
+- [ ] Step 10.1: Unit Test Setup
+  - **Task**: Configure Jest/Vitest for the project (if not already in starter).
+  - **Files**: `jest.config.js` or `vitest.config.ts`, relevant `package.json` scripts.
+  - **Step Dependencies**: None
+  - **User Instructions**: Follow instructions for setting up Jest or Vitest with Next.js and TypeScript if not already fully configured in the starter template.
+
+- [ ] Step 10.2: Example Unit Tests for Server Actions
+  - **Task**: Write a few example unit tests for key server action logic, focusing on non-DB/AI dependent logic or using mocks.
+  - **Files**:
+    - `actions/db/__tests__/profiles-actions.test.ts`: Test logic within `checkAndIncrementUsageAction` related to date comparison and count reset/increment (mock DB calls).
+    - `lib/__tests__/utils.test.ts` (if any utility functions were added, e.g. for file validation if not directly in actions).
+  - **Step Dependencies**: Relevant actions (e.g., Step 2.3), Step 10.1
+  - **User Instructions**: Focus on testing business logic. Mock external dependencies like `db` client or `GeminiAPI`.
+
+- [ ] Step 10.3: E2E Test Setup (Playwright)
+  - **Task**: Configure Playwright for the project (if not already in starter).
+  - **Files**: `playwright.config.ts`, example test file in a new `tests-e2e` directory.
+  - **Step Dependencies**: None
+  - **User Instructions**: Install Playwright (`npm install --save-dev @playwright/test`) and initialize it (`npx playwright install`).
+
+- [ ] Step 10.4: Example E2E Test for Auth Flow
+  - **Task**: Write a basic E2E test for the signup and login flow.
+  - **Files**:
+    - `tests-e2e/auth.spec.ts`:
+        - Test navigation to signup/login pages.
+        - Test successful signup (mocking Clerk if necessary, or using test credentials).
+        - Test successful login and redirection to dashboard.
+  - **Step Dependencies**: Step 3.2, Step 10.3
+  - **User Instructions**: Handling Clerk authentication in Playwright might require specific strategies (e.g., programmatic login, using dev instance with pre-configured users).
+
+# Summary of Approach
+
+The implementation plan is divided into logical phases, starting with foundational setup (environment, global styles, database schema) and progressing to backend logic (server actions for DB, storage, AI, and orchestration). User authentication using Clerk is integrated early. Frontend development follows, with layouts, shared components, and then feature-specific pages (Landing, Dashboard, Edit, History).
+
+Key considerations:
+1.  **Atomicity of Steps**: Each step is designed to be small and focused, facilitating sequential AI-driven code generation.
+2.  **Dependencies**: Explicitly stated dependencies ensure a logical build order.
+3.  **User Instructions**: Critical manual tasks (Supabase setup, Vercel cron jobs, API keys) are highlighted for the user.
+4.  **Adherence to Specifications**: The plan directly translates the `<project_request>` and `<technical_specification>` into actionable development steps, respecting the `<project_rules>` and leveraging the `<starter_template>`.
+5.  **RTL and Arabic First**: These are integrated from the initial styling steps and considered throughout UI development.
+6.  **Asynchronous Operations**: The image processing pipeline is designed to be asynchronous using a job queue table and a backend worker.
+7.  **Security**: RLS policies for Supabase are a dedicated step. API route security (cron secret) is included.
+8.  **Testing**: Initial setup and example tests are included to establish a testing foundation.
+
+This phased approach aims to build the application incrementally, starting with the backend and core services, then layering the UI and features on top. The detailed breakdown should provide clear guidance for the AI code generation process.
