@@ -21,15 +21,15 @@ export const HeroSection = () => {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="flex items-center justify-center"
       >
-        <Link href="https://github.com/mckaywrigley/o1-pro-template-system">
+        <Link href="#">
           <AnimatedGradientText>
-            🚀 <hr className="mx-2 h-4 w-px shrink-0 bg-gray-300" />
+            ✨ <hr className="mx-2 h-4 w-px shrink-0 bg-gray-300" />
             <span
               className={cn(
                 `animate-gradient inline bg-gradient-to-r from-[#ffaa40] via-[#9c40ff] to-[#ffaa40] bg-[length:var(--bg-size)_100%] bg-clip-text text-transparent`
               )}
             >
-              View the code on GitHub
+              تعديل الصور بالذكاء الاصطناعي
             </span>
             <ChevronRight className="ml-1 size-3 transition-transform duration-300 ease-in-out group-hover:translate-x-0.5" />
           </AnimatedGradientText>
@@ -48,7 +48,7 @@ export const HeroSection = () => {
           transition={{ duration: 0.6, delay: 0.4, ease: "easeOut" }}
           className="text-balance text-6xl font-bold"
         >
-          Receipt AI
+          أَيْسَر | AisarEdit
         </motion.div>
 
         <motion.div
@@ -57,7 +57,8 @@ export const HeroSection = () => {
           transition={{ duration: 0.6, delay: 0.6, ease: "easeOut" }}
           className="max-w-xl text-balance text-xl"
         >
-          Transform receipts and invoices into organized data instantly with AI.
+          عدّل صورك بسهولة وبشكل احترافي باستخدام الذكاء الاصطناعي، وش ما تبي من
+          تعديلات حنا نسويها لك.
         </motion.div>
 
         <motion.div
@@ -65,10 +66,10 @@ export const HeroSection = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.8, ease: "easeOut" }}
         >
-          <Link href="https://github.com/mckaywrigley/o1-pro-template-system">
-            <Button className="bg-blue-500 text-lg hover:bg-blue-600">
-              <Rocket className="mr-2 size-5" />
-              Get Started &rarr;
+          <Link href="#">
+            <Button className="bg-primary hover:bg-primary/90 text-lg">
+              <Rocket className="ml-2 size-5" />
+              ابدأ الآن &larr;
             </Button>
           </Link>
         </motion.div>
@@ -82,9 +83,9 @@ export const HeroSection = () => {
       >
         <HeroVideoDialog
           animationStyle="top-in-bottom-out"
-          videoSrc="https://www.youtube.com/embed/9yS0dR0kP-s"
+          videoSrc="https://www.youtube.com/embed/dQw4w9WgXcQ"
           thumbnailSrc="hero.png"
-          thumbnailAlt="Hero Video"
+          thumbnailAlt="أيسر - تعديل الصور بالذكاء الاصطناعي"
         />
       </motion.div>
     </div>

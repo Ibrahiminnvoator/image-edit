@@ -7,6 +7,7 @@ import { Providers } from "@/components/utilities/providers"
 import { TailwindIndicator } from "@/components/utilities/tailwind-indicator"
 import { cn } from "@/lib/utils"
 import { ClerkProvider } from "@clerk/nextjs"
+import { GoogleAnalytics } from "@/components/shared/google-analytics"
 import { auth, currentUser } from "@clerk/nextjs/server"
 import type { Metadata } from "next"
 import { tajawal } from "./fonts"
@@ -51,6 +52,9 @@ export default async function RootLayout({
             enableSystem={false}
             disableTransitionOnChange
           >
+            {/* Google Analytics */}
+            <GoogleAnalytics />
+
             {children}
 
             <TailwindIndicator />

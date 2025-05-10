@@ -10,6 +10,7 @@ import {
   profilesTable,
   SelectProfile
 } from "@/db/schema/profiles-schema"
+import { AnalyticsEventType, trackEvent } from "@/lib/analytics"
 import { MAX_DAILY_EDITS } from "@/lib/constants"
 import { ActionState } from "@/types"
 import { and, eq, sql } from "drizzle-orm"
@@ -147,12 +148,26 @@ export async function createOrUpdateProfileOnLoginAction(
     }
     
     // Create new profile
-    return createProfileAction({
+    const result = await createProfileAction({
       userId: data.userId,
       email: data.email || null,
       dailyEditCount: 0,
       lastEditDate: new Date(),
     })
+    
+    // Track user signup event with enhanced Google Analytics parameters
+    if (result.isSuccess) {
+      trackEvent(AnalyticsEventType.USER_SIGNUP, { 
+        userId: data.userId,
+        email: data.email,
+        event_category: "user_lifecycle",
+        event_label: "new_signup",
+        timestamp: new Date().toISOString(),
+        signup_method: "clerk"
+      })
+    }
+    
+    return result
   } catch (error) {
     console.error("Error in createOrUpdateProfileOnLoginAction:", error)
     return { isSuccess: false, message: "فشل في إنشاء أو تحديث الملف الشخصي" }
@@ -204,6 +219,17 @@ export async function checkAndIncrementUsageAction(
     
     // Check if the limit has been reached
     if (profile.dailyEditCount >= MAX_DAILY_EDITS) {
+      // Track daily limit reached event with enhanced Google Analytics parameters
+      trackEvent(AnalyticsEventType.DAILY_LIMIT_REACHED, { 
+        userId,
+        dailyEditCount: profile.dailyEditCount,
+        membership: profile.membership,
+        event_category: "user_limits",
+        event_label: "daily_limit_reached",
+        timestamp: new Date().toISOString(),
+        max_daily_edits: MAX_DAILY_EDITS
+      })
+      
       return {
         isSuccess: true,
         message: "تم الوصول إلى الحد اليومي للتعديلات",

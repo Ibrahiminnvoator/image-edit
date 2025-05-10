@@ -13,18 +13,18 @@ import {
   UserButton
 } from "@clerk/nextjs"
 import { motion } from "framer-motion"
-import { Menu, Receipt, X } from "lucide-react"
+import { Menu, Edit, X } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 
 const navLinks = [
-  { href: "/about", label: "About" },
-  { href: "/features", label: "Features" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/contact", label: "Contact" }
+  { href: "/about", label: "عن أيسر" },
+  { href: "/features", label: "المميزات" },
+  { href: "/pricing", label: "الأسعار" },
+  { href: "/contact", label: "تواصل معنا" }
 ]
 
-const signedInLinks = [{ href: "/dashboard", label: "Dashboard" }]
+const signedInLinks = [{ href: "/dashboard", label: "لوحة التحكم" }]
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -59,9 +59,9 @@ export default function Header() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
-          <Receipt className="size-6" />
+          <Edit className="size-6" />
           <Link href="/" className="text-xl font-bold">
-            Receipt AI
+            أَيْسَر | AisarEdit
           </Link>
         </motion.div>
 
@@ -106,7 +106,7 @@ export default function Header() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <Button variant="ghost">Sign In</Button>
+                <Button variant="ghost">تسجيل الدخول</Button>
               </motion.div>
             </SignInButton>
 
@@ -115,7 +115,7 @@ export default function Header() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <Button>Get Started</Button>
+                <Button>ابدأ الآن</Button>
               </motion.div>
             </SignUpButton>
           </SignedOut>
@@ -159,7 +159,7 @@ export default function Header() {
                 className="block hover:underline"
                 onClick={toggleMenu}
               >
-                Home
+                الرئيسية
               </Link>
             </li>
             {navLinks.map(link => (

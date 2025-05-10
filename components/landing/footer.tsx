@@ -11,79 +11,79 @@ export async function Footer() {
       <div className="container mx-auto max-w-7xl px-4 py-12 md:px-6">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
           <div className="space-y-4">
-            <h3 className="text-lg font-bold">Company</h3>
+            <h3 className="text-lg font-bold">الشركة</h3>
             <div className="flex flex-col gap-2">
               <Link
                 href="/about"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                About
+                عن أيسر
               </Link>
               <Link
                 href="/blog"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Blog
+                المدونة
               </Link>
               <Link
                 href="/careers"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Careers
+                الوظائف
               </Link>
             </div>
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-bold">Product</h3>
+            <h3 className="text-lg font-bold">المنتج</h3>
             <div className="flex flex-col gap-2">
               <Link
                 href="/features"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Features
+                المميزات
               </Link>
               <Link
                 href="/pricing"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Pricing
+                الأسعار
               </Link>
               <Link
                 href="/docs"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Documentation
+                التوثيق
               </Link>
             </div>
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-bold">Resources</h3>
+            <h3 className="text-lg font-bold">المصادر</h3>
             <div className="flex flex-col gap-2">
               <Link
                 href="/support"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Support
+                الدعم الفني
               </Link>
               <Link
                 href="/terms"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Terms
+                الشروط والأحكام
               </Link>
               <Link
                 href="/privacy"
                 className="text-muted-foreground hover:text-foreground transition"
               >
-                Privacy
+                سياسة الخصوصية
               </Link>
             </div>
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-lg font-bold">Social</h3>
+            <h3 className="text-lg font-bold">التواصل الاجتماعي</h3>
             <div className="flex gap-4">
               <Link
                 href="https://github.com"
@@ -105,7 +105,8 @@ export async function Footer() {
 
         <div className="text-muted-foreground mt-12 pt-8 text-center">
           <p>
-            &copy; {new Date().getFullYear()} Your Company. All rights reserved.
+            &copy; {new Date().getFullYear()} أَيْسَر | AisarEdit. جميع الحقوق
+            محفوظة.
           </p>
         </div>
       </div>

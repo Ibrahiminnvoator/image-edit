@@ -7,6 +7,7 @@
 import { createEditAction } from "@/actions/db/edits-actions"
 import { createImageProcessingJobAction } from "@/actions/db/image-processing-jobs-actions"
 import { checkAndIncrementUsageAction } from "@/actions/db/profiles-actions"
+import { AnalyticsEventType, trackEvent } from "@/lib/analytics"
 import { ActionState } from "@/types"
 import { auth } from "@clerk/nextjs/server"
 
@@ -55,6 +56,13 @@ export async function startImageEditProcessAction(
       originalImageFilename,
       userPromptOriginal: userPrompt,
       status: "pending"
+    })
+
+    // Track edit submission event
+    trackEvent(AnalyticsEventType.EDIT_SUBMITTED, {
+      userId,
+      editId: editResult.isSuccess ? editResult.data?.id : undefined,
+      promptLength: userPrompt.length
     })
 
     if (!editResult.isSuccess) {

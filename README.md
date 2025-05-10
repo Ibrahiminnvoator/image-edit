@@ -1,103 +1,123 @@
-# Building Apps with the o1 Pro Template System
+# أَيْسَر | AisarEdit - تعديل الصور بالذكاء الاصطناعي
 
-This is the repo for a free workshop on how to use [OpenAI's o1-pro](https://chatgpt.com/) to build full-stack web apps with a [starter template](https://github.com/mckaywrigley/mckays-app-template).
+AisarEdit هو تطبيق ويب لتعديل الصور باستخدام الذكاء الاصطناعي، مصمم خصيصًا للمستخدمين الناطقين باللهجة السعودية.
 
-It is part 1 of a 2 part series. This is the beginner workshop. The advanced workshop will be released on February 24th.
+## نظرة عامة | Overview
 
-## Workshop Video
+أيسر (AisarEdit) هو تطبيق ويب يتيح للمستخدمين تعديل الصور باستخدام تقنيات الذكاء الاصطناعي المتقدمة. التطبيق مصمم خصيصًا للمستخدمين الناطقين باللهجة السعودية، مع واجهة مستخدم سهلة الاستخدام ومحتوى مخصص يعكس الثقافة واللغة المحلية.
 
-You can find the video for this workshop on [X](https://x.com/mckaywrigley/status/1891544731496206365) and [YouTube](https://www.youtube.com/watch?v=Y4n_p9w8pGY).
+AisarEdit is a web application that allows users to edit images using advanced AI techniques. The application is specifically designed for Saudi Arabic-speaking users, with an easy-to-use interface and customized content that reflects the local culture and language.
 
-This workshop is also available in course form on [Takeoff](https://www.jointakeoff.com/) - we will continue to add to it and keep it updated with the latest model releases over time.
+## الميزات الرئيسية | Key Features
 
-Use code `O1PRO` for 25% off at checkout.
+- **تعديل الصور بالذكاء الاصطناعي**: استخدام نماذج Gemini AI لتعديل الصور بناءً على وصف نصي
+- **واجهة مستخدم باللهجة السعودية**: جميع النصوص والرسائل مكتوبة باللهجة السعودية
+- **نظام المصادقة**: تسجيل الدخول وإدارة الحسابات باستخدام Clerk
+- **لوحة تحكم المستخدم**: عرض الإحصائيات وعدد التعديلات المتبقية
+- **سجل التعديلات**: عرض جميع الصور التي تم تعديلها سابقًا
+- **تتبع التحليلات**: تتبع استخدام المستخدمين وأداء التطبيق
+- **وضع الألوان الداكن/الفاتح**: دعم وضع الألوان الداكن والفاتح
 
-I get asked all the time for an example of content on Takeoff, so hopefully this workshop gives you a feel for our content and my teaching style.
+## التقنيات المستخدمة | Tech Stack
 
-## About Me
+- **نموذج الذكاء الاصطناعي**: [Gemini AI](https://gemini.google.com/)
+- **الواجهة الأمامية**: 
+  - [Next.js](https://nextjs.org/docs) - إطار عمل React لبناء تطبيقات الويب
+  - [Tailwind CSS](https://tailwindcss.com/docs/guides/nextjs) - إطار عمل CSS للتصميم السريع
+  - [Shadcn UI](https://ui.shadcn.com/docs/installation) - مكونات واجهة المستخدم
+- **قاعدة البيانات**: 
+  - [PostgreSQL](https://www.postgresql.org/about/) - قاعدة بيانات مفتوحة المصدر
+  - [Supabase](https://supabase.com/) - منصة بيانات مفتوحة المصدر
+  - [Drizzle ORM](https://orm.drizzle.team/docs/get-started-postgresql) - ORM لقواعد البيانات
+- **المصادقة**: [Clerk](https://clerk.com/) - نظام إدارة الهوية والمستخدمين
+- **التخزين**: [Supabase Storage](https://supabase.com/storage) - تخزين الصور والملفات
+- **التحليلات**: نظام تحليلات مخصص لتتبع الأحداث
 
-My name is [Mckay](https://www.mckaywrigley.com/).
+## متطلبات النظام | Prerequisites
 
-I'm currently building [Takeoff](https://www.jointakeoff.com/) - the best place on the internet to learn how to build with AI.
+لتشغيل التطبيق، ستحتاج إلى التالي:
 
-Follow me on [X](https://x.com/mckaywrigley) and subscribe to my [YouTube](https://www.youtube.com/channel/UCXZFVVCFahewxr3est7aT7Q) for more free AI coding tutorials & guides.
+- [Node.js](https://nodejs.org/) (v18.0.0 أو أحدث)
+- [npm](https://www.npmjs.com/) أو [yarn](https://yarnpkg.com/) أو [pnpm](https://pnpm.io/)
+- حساب [Supabase](https://supabase.com/) لقاعدة البيانات والتخزين
+- حساب [Clerk](https://clerk.com/) للمصادقة
+- مفتاح API لنموذج [Gemini AI](https://gemini.google.com/)
 
-## Tech Stack
+## التثبيت والإعداد | Installation & Setup
 
-- AI Model: [o1-pro](https://chatgpt.com/)
-- IDE: [Cursor](https://www.cursor.com/)
-- AI Tools: [RepoPrompt](https://repoprompt.com/), [V0](https://v0.dev/), [Perplexity](https://www.perplexity.com/)
-- Frontend: [Next.js](https://nextjs.org/docs), [Tailwind](https://tailwindcss.com/docs/guides/nextjs), [Shadcn](https://ui.shadcn.com/docs/installation), [Framer Motion](https://www.framer.com/motion/introduction/)
-- Backend: [PostgreSQL](https://www.postgresql.org/about/), [Supabase](https://supabase.com/), [Drizzle](https://orm.drizzle.team/docs/get-started-postgresql), [Server Actions](https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations)
-- Auth: [Clerk](https://clerk.com/)
-- Payments: [Stripe](https://stripe.com/)
-
-**Note**: While I _highly_ recommend using o1-pro for this workflow, you can also use o3-mini, Claude 3.5 Sonnet, Gemini 2.0 Pro, and DeepSeek r1 for cheaper alternatives. However, you _will_ run into issues with those other models in this particular workflow, so I recommend using o1-pro for this workflow if possible.
-
-## Prerequisites
-
-You will need accounts for the following services.
-
-They all have free plans that you can use to get started, with the exception of ChatGPT Pro (if you are using o1-pro).
-
-- Create a [Cursor](https://www.cursor.com/) account
-- Create a [GitHub](https://github.com/) account
-- Create a [Supabase](https://supabase.com/) account
-- Create a [Clerk](https://clerk.com/) account
-- Create a [Stripe](https://stripe.com/) account
-- Create a [Vercel](https://vercel.com/) account
-
-You will likely not need paid plans unless you are building a business.
-
-## Guide
-
-### Clone the repo
-
-1. Clone this repo:
+### 1. استنساخ المشروع | Clone the repository
 
 ```bash
-git clone https://github.com/mckaywrigley/o1-pro-template-system o1-pro-project
+git clone https://github.com/yourusername/aisaredit.git
+cd aisaredit
 ```
 
-2. Save the original remote as "upstream" before removing it:
-
-```bash
-git remote rename origin upstream
-```
-
-3. Create a new repository on GitHub
-
-4. Add the new repository as "origin":
-
-```bash
-git remote add origin https://github.com/your-username/your-repo-name.git
-```
-
-5. Push the new repository:
-
-```
-git branch -M main
-git push -u origin main
-```
-
-### Run the app
-
-1. Install dependencies:
+### 2. تثبيت الاعتماديات | Install dependencies
 
 ```bash
 npm install
+# أو yarn install
+# أو pnpm install
 ```
 
-2. Run the app:
+### 3. إعداد المتغيرات البيئية | Set up environment variables
+
+قم بنسخ ملف `.env.example` إلى `.env.local` وقم بتعبئة المتغيرات المطلوبة:
+
+```bash
+cp .env.example .env.local
+```
+
+المتغيرات المطلوبة تشمل:
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: مفتاح Clerk العام
+- `CLERK_SECRET_KEY`: مفتاح Clerk السري
+- `NEXT_PUBLIC_CLERK_SIGN_IN_URL`: مسار تسجيل الدخول
+- `NEXT_PUBLIC_CLERK_SIGN_UP_URL`: مسار التسجيل
+- `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`: مسار ما بعد تسجيل الدخول
+- `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL`: مسار ما بعد التسجيل
+- `DATABASE_URL`: رابط قاعدة بيانات Supabase
+- `SUPABASE_URL`: رابط Supabase
+- `SUPABASE_KEY`: مفتاح Supabase
+- `GEMINI_API_KEY`: مفتاح API لنموذج Gemini
+- `CRON_SECRET`: مفتاح سري للمهام المجدولة
+- `AISEREDIT_ORIGINAL_IMAGES_BUCKET`: اسم حاوية الصور الأصلية
+- `AISEREDIT_EDITED_IMAGES_BUCKET`: اسم حاوية الصور المعدلة
+
+### 4. إعداد قاعدة البيانات | Set up the database
+
+قم بتشغيل الترحيلات لإنشاء الجداول المطلوبة:
+
+```bash
+npm run db:push
+```
+
+### 5. تشغيل التطبيق | Run the application
 
 ```bash
 npm run dev
 ```
 
-3.  View the app on http://localhost:3000
+سيتم تشغيل التطبيق على الرابط `http://localhost:3000`.
 
-### Follow the workshop
+## الاستخدام | Usage
 
-View the full workshop on [X](https://x.com/mckaywrigley/status/1891544731496206365) and [YouTube](https://www.youtube.com/watch?v=Y4n_p9w8pGY).
+1. قم بإنشاء حساب أو تسجيل الدخول
+2. انتقل إلى صفحة التعديل من لوحة التحكم
+3. قم بتحميل صورة وأدخل وصفًا للتعديل المطلوب
+4. انتظر حتى يتم معالجة الصورة
+5. يمكنك عرض سجل التعديلات الخاص بك في صفحة السجل
 
-Or sign up for [Takeoff](https://www.jointakeoff.com/) to get access to the full workshop in course form.
+## المساهمة | Contributing
+
+نرحب بالمساهمات! يرجى اتباع الخطوات التالية:
+
+1. قم بعمل fork للمشروع
+2. قم بإنشاء فرع جديد (`git checkout -b feature/amazing-feature`)
+3. قم بعمل commit للتغييرات (`git commit -m 'Add some amazing feature'`)
+4. قم برفع الفرع (`git push origin feature/amazing-feature`)
+5. قم بفتح pull request
+
+## الترخيص | License
+
+تم ترخيص هذا المشروع بموجب ترخيص MIT. انظر ملف `LICENSE` للحصول على مزيد من المعلومات.
