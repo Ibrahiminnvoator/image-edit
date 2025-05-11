@@ -7,7 +7,7 @@
 import { db } from "@/db/db"
 import { ALLOWED_IMAGE_FORMATS, EDITED_IMAGES_BUCKET, MAX_IMAGE_UPLOAD_SIZE_BYTES, ORIGINAL_IMAGES_BUCKET } from "@/lib/constants"
 import { ActionState, ImageMimeType, ImageUploadResult } from "@/types"
-import { createClientComponentClient } from "@supabase/supabase-js"
+import { createClient } from "@supabase/supabase-js"
 
 /**
  * Uploads an image to Supabase Storage
@@ -41,7 +41,10 @@ export async function uploadImageToSupabaseStorageAction(
     }
 
     // Create Supabase client
-    const supabase = createClientComponentClient()
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    )
 
     // Determine bucket name based on type
     const bucketName = type === "original" ? ORIGINAL_IMAGES_BUCKET : EDITED_IMAGES_BUCKET
@@ -103,7 +106,10 @@ export async function getImagePublicUrlFromPathAction(
   bucketName: string = EDITED_IMAGES_BUCKET
 ): Promise<ActionState<{ publicUrl: string }>> {
   try {
-    const supabase = createClientComponentClient()
+    const supabase = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    )
     const { data } = supabase.storage.from(bucketName).getPublicUrl(path)
 
     return {

@@ -14,5 +14,5 @@ if (!apiKey) {
 export const genAI = new GoogleGenerativeAI(apiKey)
 
 // Models for different tasks
-export const GEMINI_VISION_MODEL = "gemini-2.0-flash-preview-image-generation" // For image analysis and generation
-export const GEMINI_TEXT_MODEL = "gemini-2.0-flash-preview" // For text translation and processing
+export const GEMINI_VISION_MODEL = "gemini-1.5-pro-vision" // For image analysis
+export const GEMINI_TEXT_MODEL = "gemini-1.5-pro" // For text translation and processing

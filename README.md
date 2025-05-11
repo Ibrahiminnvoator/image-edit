@@ -100,6 +100,41 @@ npm run dev
 
 سيتم تشغيل التطبيق على الرابط `http://localhost:3000`.
 
+## بيئة التطوير المحلية المؤتمتة | Automated Local Development Environment
+
+لتسهيل عملية التطوير، قمنا بإنشاء بيئة تطوير محلية مؤتمتة باستخدام Docker. هذه البيئة تتضمن:
+
+- تطبيق Next.js
+- خادم Supabase محلي
+- إعداد تلقائي للمتغيرات البيئية
+
+### استخدام بيئة التطوير المؤتمتة | Using the Automated Development Environment
+
+1. تأكد من تثبيت [Docker](https://docs.docker.com/get-docker/) و [Docker Compose](https://docs.docker.com/compose/install/)
+
+2. قم بتشغيل سكريبت الإعداد:
+   ```bash
+   ./setup.sh
+   ```
+
+3. بعد اكتمال الإعداد، يمكنك الوصول إلى:
+   - تطبيق Next.js: http://localhost:3000
+   - منصة Supabase: http://localhost:54322
+
+### أوامر إدارة بيئة التطوير | Development Environment Management
+
+يمكنك استخدام سكريبت إدارة بيئة التطوير للتحكم في البيئة:
+
+```bash
+./scripts/dev-env.sh start    # تشغيل البيئة
+./scripts/dev-env.sh stop     # إيقاف البيئة
+./scripts/dev-env.sh logs     # عرض السجلات
+./scripts/dev-env.sh seed     # إضافة بيانات تجريبية
+./scripts/dev-env.sh reset    # إعادة تعيين البيئة
+```
+
+لمزيد من المعلومات حول بيئة التطوير المحلية، راجع [دليل التطوير المحلي](docs/local-development.md).
+
 ## الاستخدام | Usage
 
 1. قم بإنشاء حساب أو تسجيل الدخول
