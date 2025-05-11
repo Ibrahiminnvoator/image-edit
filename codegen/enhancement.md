@@ -29,3 +29,10 @@ Areas for Enhancement
 - Download Watermarking: Add optional watermarking for downloaded images.
 - Enhanced Privacy Controls: Give users more granular control over their edit history and data.
 Would you like me to elaborate on any specific area of enhancement? I can provide more detailed recommendations for implementation.
+
+
+
+
+
+
+Hobby accounts are limited to daily cron jobs. This cron expression (*/5 * * * *) would run more than once per day. Upgrade to the Pro plan to unlock all Cron Jobs features on Vercel.
