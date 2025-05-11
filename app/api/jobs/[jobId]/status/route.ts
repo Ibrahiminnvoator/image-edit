@@ -6,11 +6,13 @@ import { getImageProcessingJobByIdAction } from "@/actions/db/image-processing-j
 import { auth } from "@clerk/nextjs/server"
 import { NextRequest, NextResponse } from "next/server"
 
-export async function GET(
-  request: NextRequest,
-  context: { params: { jobId: string } }
-) {
-  const { params } = context
+interface RouteContext {
+  params: {
+    jobId: string
+  }
+}
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     // Authenticate user
     const { userId } = await auth()
