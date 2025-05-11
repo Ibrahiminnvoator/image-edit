@@ -8,8 +8,9 @@ import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: { jobId: string } }
 ) {
+  const { params } = context
   try {
     // Authenticate user
     const { userId } = await auth()
